@@ -153,7 +153,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3) {
   }
 }
 // ====== 未処理アイテムの取得（フォルダおよびフラットファイル両対応） ======
-function getUnprocessedItems(dirPath) {
+function getUnprocessedItems(dirPath, includeProcessed = false) {
   const items = [];
   if (!fs.existsSync(dirPath)) return items;
   
@@ -164,7 +164,7 @@ function getUnprocessedItems(dirPath) {
       
       // 1. フォルダの場合
       if (entry.isDirectory()) {
-        if (entry.name.includes('_処理済み')) continue;
+        if (!includeProcessed && entry.name.includes('_処理済み')) continue;
         
         const subFiles = fs.readdirSync(fullPath);
         const txtFile = subFiles.find(sf => sf.endsWith('.txt'));
@@ -182,7 +182,7 @@ function getUnprocessedItems(dirPath) {
       } 
       // 2. フラットファイルの場合
       else if (entry.isFile()) {
-        if (entry.name.endsWith('.txt') && !entry.name.includes('_処理済み')) {
+        if (entry.name.endsWith('.txt') && (includeProcessed || !entry.name.includes('_処理済み'))) {
           const content = fs.readFileSync(fullPath, 'utf-8');
           items.push({
             filename: entry.name,
@@ -383,8 +383,9 @@ function backendPlugin() {
           try {
             const url = new URL(req.url, `http://${req.headers.host}`);
             const dirPath = url.searchParams.get('dir');
+            const all = url.searchParams.get('all') === 'true';
             if (!dirPath || !fs.existsSync(dirPath)) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Invalid path' })); return; }
-            const results = getUnprocessedItems(dirPath);
+            const results = getUnprocessedItems(dirPath, all);
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(results));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
