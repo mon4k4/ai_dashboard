@@ -46,6 +46,8 @@ interface AppState {
   deleteMember: (id: string) => void;
   addReport: (report: WeeklyReport) => void;
   updateReport: (id: string, updates: Partial<WeeklyReport>) => void;
+  settings: Record<string, string>;
+  saveSettings: (newSettings: Record<string, string>) => void;
   pendingMembers: string[];
   clearPendingMembers: () => void;
 }
@@ -63,6 +65,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isProcessing: false, currentFile: null, processedCount: 0, totalCount: 0, message: ''
   });
   const [pendingMembers, setPendingMembers] = useState<string[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const sseRef = useRef<EventSource | null>(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -77,6 +80,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (data.projects) setProjects(data.projects);
         if (data.members) setMembers(data.members);
         if (data.reports) setReports(data.reports);
+        if (data.settings) {
+          setSettings(data.settings);
+          Object.entries(data.settings).forEach(([key, val]) => {
+            if (val !== undefined && val !== null) {
+              localStorage.setItem(key, String(val));
+            }
+          });
+        }
         setIsLoaded(true);
       })
       .catch(e => {
@@ -93,12 +104,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       fetch('/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tasks, minutes, projects, members, reports })
+        body: JSON.stringify({ tasks, minutes, projects, members, reports, settings })
       }).catch(e => console.error('Failed to save data:', e));
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [tasks, minutes, projects, members, reports, isLoaded]);
+  }, [tasks, minutes, projects, members, reports, settings, isLoaded]);
 
   // ====== SSE接続: バックエンドからのイベントを購読 ======
   useEffect(() => {
@@ -263,12 +274,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReports(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
   }, []);
 
+  const saveSettings = useCallback((newSettings: Record<string, string>) => {
+    setSettings(prev => {
+      const updated = { ...prev, ...newSettings };
+      Object.entries(newSettings).forEach(([key, val]) => {
+        localStorage.setItem(key, val);
+      });
+      return updated;
+    });
+  }, []);
+
   return (
     <AppContext.Provider value={{ 
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
       addTask, updateTask, commitTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject,
-      addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers
+      addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers,
+      settings, saveSettings
     }}>
       {children}
     </AppContext.Provider>

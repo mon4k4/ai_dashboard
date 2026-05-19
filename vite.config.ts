@@ -349,7 +349,7 @@ function backendPlugin() {
         if (req.url === '/api/data' && req.method === 'GET') {
           try {
             const dbDir = path.join(process.cwd(), 'data');
-            const result = { tasks: [], minutes: [], projects: [], members: [], reports: [] };
+            const result = { tasks: [], minutes: [], projects: [], members: [], reports: [], settings: {} };
             
             if (fs.existsSync(dbDir)) {
               for (const key of Object.keys(result)) {
@@ -376,7 +376,7 @@ function backendPlugin() {
             const dbDir = path.join(process.cwd(), 'data');
             if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
             
-            for (const key of ['tasks', 'minutes', 'projects', 'members', 'reports']) {
+            for (const key of ['tasks', 'minutes', 'projects', 'members', 'reports', 'settings']) {
               if (data[key]) {
                 const filePath = path.join(dbDir, `${key}.json`);
                 fs.writeFileSync(filePath, JSON.stringify(data[key], null, 2), 'utf-8');

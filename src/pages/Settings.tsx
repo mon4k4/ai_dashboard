@@ -3,7 +3,7 @@ import { Save, Server, Folder, FileText, User, Clock } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 export default function Settings() {
-  const { members } = useAppContext();
+  const { members, settings, saveSettings } = useAppContext();
   const [llmEndpoint, setLlmEndpoint] = useState('http://localhost:8080/v1');
   const [imageDir, setImageDir] = useState('/Users/monaka/Pictures/Screenshots');
   const [minutesDir, setMinutesDir] = useState('/Users/monaka/Projects/05_pj_dashboard/議事録一覧');
@@ -12,29 +12,25 @@ export default function Settings() {
   const [monthlyWorkload, setMonthlyWorkload] = useState('155');
   const [saved, setSaved] = useState(false);
 
+  // Load from AppContext settings state
   useEffect(() => {
-    const storedEndpoint = localStorage.getItem('llmEndpoint');
-    const storedImageDir = localStorage.getItem('imageDir');
-    const storedMinutesDir = localStorage.getItem('minutesDir');
-    const storedTemplatePath = localStorage.getItem('reportTemplatePath');
-    const storedMyName = localStorage.getItem('myName');
-    const storedWorkload = localStorage.getItem('monthlyWorkload');
-    
-    if (storedEndpoint) setLlmEndpoint(storedEndpoint);
-    if (storedImageDir) setImageDir(storedImageDir);
-    if (storedMinutesDir) setMinutesDir(storedMinutesDir);
-    if (storedTemplatePath) setReportTemplatePath(storedTemplatePath);
-    if (storedMyName) setMyName(storedMyName);
-    if (storedWorkload) setMonthlyWorkload(storedWorkload);
-  }, []);
+    if (settings.llmEndpoint) setLlmEndpoint(settings.llmEndpoint);
+    if (settings.imageDir) setImageDir(settings.imageDir);
+    if (settings.minutesDir) setMinutesDir(settings.minutesDir);
+    if (settings.reportTemplatePath) setReportTemplatePath(settings.reportTemplatePath);
+    if (settings.myName) setMyName(settings.myName);
+    if (settings.monthlyWorkload) setMonthlyWorkload(settings.monthlyWorkload);
+  }, [settings]);
 
   const handleSave = () => {
-    localStorage.setItem('llmEndpoint', llmEndpoint);
-    localStorage.setItem('imageDir', imageDir);
-    localStorage.setItem('minutesDir', minutesDir);
-    localStorage.setItem('reportTemplatePath', reportTemplatePath);
-    localStorage.setItem('myName', myName);
-    localStorage.setItem('monthlyWorkload', monthlyWorkload);
+    saveSettings({
+      llmEndpoint,
+      imageDir,
+      minutesDir,
+      reportTemplatePath,
+      myName,
+      monthlyWorkload
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
