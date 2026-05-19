@@ -67,15 +67,20 @@ export default function Scheduler() {
   }, [minDate, maxDate]);
 
   const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const myName = localStorage.getItem('myName') || '';
 
   // プロジェクトごとにタスクをグループ化（wbsOrder順にソート）
   const groupedTasks = useMemo(() => {
     const groups: { projectId: string | null; projectName: string; color: string; project?: any; tasks: TaskExtractResult[] }[] = [];
     
-    const filteredTasks = showOnlyMine && myName
+    let filteredTasks = showOnlyMine && myName
       ? tasks.filter(t => t.assignee === myName)
       : tasks;
+
+    if (hideCompleted) {
+      filteredTasks = filteredTasks.filter(t => t.status !== 'done');
+    }
 
     const sortTasks = (taskList: TaskExtractResult[]) => {
       return [...taskList].sort((a, b) => {
@@ -107,7 +112,7 @@ export default function Scheduler() {
     }
 
     return groups.filter(g => g.tasks.length > 0);
-  }, [tasks, projects, showOnlyMine, myName]);
+  }, [tasks, projects, showOnlyMine, hideCompleted, myName]);
 
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
@@ -116,9 +121,13 @@ export default function Scheduler() {
     if (destination.index === source.index) return;
 
     // 現在のグループに属するタスクを取得（現在のソート順）
-    const filteredTasks = showOnlyMine && myName
+    let filteredTasks = showOnlyMine && myName
       ? tasks.filter(t => t.assignee === myName)
       : tasks;
+      
+    if (hideCompleted) {
+      filteredTasks = filteredTasks.filter(t => t.status !== 'done');
+    }
       
     const groupTasks = [...filteredTasks]
       .filter(t => t.projectId === projectId)
@@ -192,16 +201,27 @@ export default function Scheduler() {
           <CalendarDays size={24} color="var(--accent-primary)" />
           Scheduler (WBS View)
         </h2>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
-          <input 
-            type="checkbox" 
-            checked={showOnlyMine} 
-            onChange={e => setShowOnlyMine(e.target.checked)} 
-            disabled={!myName}
-            style={{ width: '16px', height: '16px' }}
-          />
-          自分のタスクのみ表示 {(!myName) && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(設定から名前を登録してください)</span>}
-        </label>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+            <input 
+              type="checkbox" 
+              checked={hideCompleted} 
+              onChange={e => setHideCompleted(e.target.checked)} 
+              style={{ width: '16px', height: '16px' }}
+            />
+            完了済みのタスクを非表示
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+            <input 
+              type="checkbox" 
+              checked={showOnlyMine} 
+              onChange={e => setShowOnlyMine(e.target.checked)} 
+              disabled={!myName}
+              style={{ width: '16px', height: '16px' }}
+            />
+            自分のタスクのみ表示 {(!myName) && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(設定から名前を登録してください)</span>}
+          </label>
+        </div>
       </div>
 
       <div className="glass-panel" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
