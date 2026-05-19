@@ -3,6 +3,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
+import { buildSummaryPrompt } from './src/prompts/summaryPrompts'
+import { buildTaskExtractionPrompt } from './src/prompts/taskPrompts'
 
 // ====== バックエンド状態管理 ======
 const state = {
@@ -25,14 +27,6 @@ function broadcast(event, data) {
   for (const c of state.sseClients) {
     try { c.write(msg); } catch (e) { /* disconnected */ }
   }
-}
-
-// ====== プロンプト (Node.js用に複製) ======
-function buildSummaryPrompt(t) {
-  return `以下の会議の文字起こしを要約し、重要な決定事項と議論のポイントをマークダウン形式で簡潔にまとめてください。\n\n【文字起こし】\n${t}`;
-}
-function buildTaskPrompt(t) {
-  return `以下の会議の文字起こしから、決定されたタスクと担当者を抽出してください。\n出力は必ず以下のJSON配列フォーマットにしてください。JSON以外のテキストは出力しないでください。\n[\n  {\n    "id": "ユニークなID（例: task-1）",\n    "title": "タスクの簡潔なタイトル",\n    "details": "タスクの具体的な詳細情報や背景",\n    "assignee": "担当者名",\n    "status": "todo"\n  }\n]\n\n【文字起こし】\n${t}`;
 }
 
 // ====== Thinking Model パーサー ======
@@ -167,7 +161,7 @@ async function processFile(file, llmEndpoint) {
   const sumResult = await callLlm(llmEndpoint, [{ role: 'user', content: buildSummaryPrompt(file.content) }], `要約: ${file.filename}`, 0.6);
   const taskResult = await callLlm(llmEndpoint, [
     { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
-    { role: 'user', content: buildTaskPrompt(file.content) }
+    { role: 'user', content: buildTaskExtractionPrompt(file.content) }
   ], `タスク抽出: ${file.filename}`, 0.6);
 
   let parsed = [];
