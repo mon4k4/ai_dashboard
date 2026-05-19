@@ -12,6 +12,7 @@ export default function Minutes() {
   const [title, setTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
 
   const targetDir = localStorage.getItem('minutesDir') || '/Users/monaka/Projects/05_pj_dashboard/議事録一覧';
 
@@ -98,23 +99,45 @@ export default function Minutes() {
       )}
 
       {/* 議事録追加フォーム */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>新規議事録の要約</h3>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="会議のタイトル" style={{ fontWeight: 'bold' }} />
-        <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Zoomの文字起こしを貼り付けてください..." rows={3} style={{ resize: 'vertical' }} />
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
-            <ImageIcon size={18} /> スクショを選択
-            <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
-          </label>
-          <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={handleSummarize} disabled={isLoading || !transcript.trim() || !title.trim()}>
-            {isLoading ? <Loader2 size={18} className="spin" /> : <FileText size={18} />}
-            AI要約を生成
-          </button>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: isFormExpanded ? '1rem' : '0', transition: 'all 0.3s ease' }}>
+        <div 
+          onClick={() => setIsFormExpanded(!isFormExpanded)} 
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FileText size={18} color="var(--accent-primary)" />
+            新規議事録の要約
+          </h3>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            {isFormExpanded ? '閉じる ▲' : '開く ▼'}
+          </span>
         </div>
-        {images.length > 0 && (
-          <div style={styles.imageGallery}>
-            {images.map((src, i) => (<img key={i} src={src} alt="screenshot" style={styles.thumbnail} />))}
+
+        {isFormExpanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="会議のタイトル" style={{ fontWeight: 'bold' }} />
+            <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Zoom of 文字起こしを貼り付けてください..." rows={3} style={{ resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
+                <ImageIcon size={18} /> スクショを選択
+                <input type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
+              </label>
+              <button className="btn-primary" style={{ marginLeft: 'auto' }} onClick={handleSummarize} disabled={isLoading || !transcript.trim() || !title.trim()}>
+                {isLoading ? <Loader2 size={18} className="spin" /> : <FileText size={18} />}
+                AI要約を生成
+              </button>
+            </div>
+            {images.length > 0 && (
+              <div style={styles.imageGallery}>
+                {images.map((src, i) => (<img key={i} src={src} alt="screenshot" style={styles.thumbnail} />))}
+              </div>
+            )}
           </div>
         )}
       </div>
