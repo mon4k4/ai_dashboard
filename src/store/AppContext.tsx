@@ -50,6 +50,7 @@ interface AppState {
   saveSettings: (newSettings: Record<string, string>) => void;
   pendingMembers: PendingMemberGroup[];
   clearPendingMembers: (minuteTitle?: string) => void;
+  addPendingMembers: (minuteTitle: string, names: string[]) => void;
 }
 
 export interface PendingMemberGroup {
@@ -288,6 +289,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const addPendingMembers = useCallback((minuteTitle: string, names: string[]) => {
+    setPendingMembers(prev => {
+      const existingIdx = prev.findIndex(g => g.minuteTitle === minuteTitle);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          names: Array.from(new Set([...updated[existingIdx].names, ...names]))
+        };
+        return updated;
+      } else {
+        return [...prev, { minuteTitle, names }];
+      }
+    });
+  }, []);
+
   const addReport = useCallback((report: WeeklyReport) => {
     setReports(prev => [report, ...prev]);
   }, []);
@@ -311,7 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
       addTask, updateTask, commitTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject,
-      addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers,
+      addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers, addPendingMembers,
       settings, saveSettings
     }}>
       {children}

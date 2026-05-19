@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 export default function Minutes() {
-  const { minutes, addMinute, batchStatus, pendingMembers, clearPendingMembers, addMember } = useAppContext();
+  const { minutes, addMinute, batchStatus, pendingMembers, clearPendingMembers, addMember, members, addPendingMembers } = useAppContext();
   const [transcript, setTranscript] = useState('');
   const [title, setTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +46,29 @@ export default function Minutes() {
         date: extractedDate,
         title, summary: summaryText, extractedTasks: []
       });
+
+      // メンバーの自動抽出（手動）
+      const regex1 = /\[([^\]\n]{1,15})\]\s*\d{2}:\d{2}/g;
+      const regex2 = /(?:^|\n)(?:\[?\d{2}:\d{2}(?::\d{2})?\]?\s*)?([^\[\]:：\n]{1,15})[=:：]/g;
+      const extractedNames = new Set<string>();
+      [regex1, regex2].forEach(regex => {
+        let match;
+        regex.lastIndex = 0;
+        while ((match = regex.exec(transcript)) !== null) {
+          const name = match[1].trim();
+          if (name && name.length < 15 && !name.includes('http') && !['ID', 'URL', 'Time'].includes(name) && !name.startsWith('**')) {
+            extractedNames.add(name);
+          }
+        }
+      });
+
+      if (extractedNames.size > 0) {
+        const newNames = Array.from(extractedNames).filter(name => !members.find(m => m.name === name));
+        if (newNames.length > 0) {
+          addPendingMembers(title, newNames);
+        }
+      }
+
       setTranscript(''); setTitle(''); setImages([]);
     } catch (err) {
       alert('要約に失敗しました。LLMが起動しているか確認してください。');
