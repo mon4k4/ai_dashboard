@@ -35,6 +35,7 @@ interface AppState {
   addTask: (task: TaskExtractResult) => void;
   updateTask: (id: string, updates: Partial<TaskExtractResult>) => void;
   commitTask: (id: string) => void;
+  reorderTasks: (orderedIds: string[]) => void;
   addMinute: (minute: MinuteSummary) => void;
   updateMinute: (id: string, updates: Partial<MinuteSummary>) => void;
   addProject: (project: Project) => void;
@@ -205,6 +206,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, isNew: false } : t));
   }, []);
 
+  const reorderTasks = useCallback((orderedIds: string[]) => {
+    setTasks(prev => {
+      const taskMap = new Map(prev.map(t => [t.id, t]));
+      orderedIds.forEach((id, index) => {
+        const task = taskMap.get(id);
+        if (task) {
+          taskMap.set(id, { ...task, wbsOrder: index });
+        }
+      });
+      return prev.map(t => taskMap.get(t.id) || t);
+    });
+  }, []);
+
   const addMinute = useCallback((minute: MinuteSummary) => {
     setMinutes(prev => [minute, ...prev]);
   }, []);
@@ -252,7 +266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
-      addTask, updateTask, commitTask, addMinute, updateMinute,
+      addTask, updateTask, commitTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject,
       addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers
     }}>

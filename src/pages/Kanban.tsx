@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
 import { Bot, Loader2, Plus, GripVertical } from 'lucide-react';
@@ -120,35 +121,41 @@ export default function Kanban() {
                       {tasksByColumn[col.id]?.map((task, index) => {
                         const project = projects.find(p => p.id === task.projectId);
                         return (
-                          <Draggable key={task.id} draggableId={task.id} index={index}>
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                onClick={() => setEditingTaskId(task.id)}
-                                style={{
-                                  ...styles.taskCard,
-                                  borderLeft: project ? `4px solid ${project.color}` : '1px solid var(--border-color)',
-                                  ...provided.draggableProps.style,
-                                  transform: snapshot.isDragging ? provided.draggableProps.style?.transform : 'translate(0, 0)',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <div style={styles.taskTitle}>{task.title}</div>
-                                {project && (
-                                  <div style={{ fontSize: '0.75rem', color: project.color, fontWeight: 500 }}>
-                                    {project.name}
-                                  </div>
-                                )}
-                                <div style={styles.taskMeta}>
-                                  <span style={styles.assignee}>{task.assignee}</span>
-                                  {task.progress !== undefined && (
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{task.progress}%</span>
+                           <Draggable key={task.id} draggableId={task.id} index={index}>
+                            {(provided, snapshot) => {
+                              const cardElement = (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  onClick={() => setEditingTaskId(task.id)}
+                                  style={{
+                                    ...styles.taskCard,
+                                    borderLeft: project ? `4px solid ${project.color}` : '1px solid var(--border-color)',
+                                    ...provided.draggableProps.style,
+                                    transform: snapshot.isDragging ? provided.draggableProps.style?.transform : 'translate(0, 0)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <div style={styles.taskTitle}>{task.title}</div>
+                                  {project && (
+                                    <div style={{ fontSize: '0.75rem', color: project.color, fontWeight: 500 }}>
+                                      {project.name}
+                                    </div>
                                   )}
+                                  <div style={styles.taskMeta}>
+                                    <span style={styles.assignee}>{task.assignee}</span>
+                                    {task.progress !== undefined && (
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{task.progress}%</span>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              );
+                              if (snapshot.isDragging) {
+                                return createPortal(cardElement, document.body);
+                              }
+                              return cardElement;
+                            }}
                           </Draggable>
                         );
                       })}

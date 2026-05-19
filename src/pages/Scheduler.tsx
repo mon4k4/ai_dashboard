@@ -1,5 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { CalendarDays, FolderKanban } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
+import { CalendarDays, FolderKanban, GripVertical } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -8,7 +11,7 @@ import * as JapaneseHolidays from 'japanese-holidays';
 const DAY_WIDTH = 40; // 1日のピクセル幅
 
 export default function Scheduler() {
-  const { tasks, projects, updateTask } = useAppContext();
+  const { tasks, projects, updateTask, reorderTasks } = useAppContext();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   // ドラッグ操作の状態
@@ -66,7 +69,7 @@ export default function Scheduler() {
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const myName = localStorage.getItem('myName') || '';
 
-  // プロジェクトごとにタスクをグループ化
+  // プロジェクトごとにタスクをグループ化（wbsOrder順にソート）
   const groupedTasks = useMemo(() => {
     const groups: { projectId: string | null; projectName: string; color: string; project?: any; tasks: TaskExtractResult[] }[] = [];
     
@@ -74,13 +77,22 @@ export default function Scheduler() {
       ? tasks.filter(t => t.assignee === myName)
       : tasks;
 
+    const sortTasks = (taskList: TaskExtractResult[]) => {
+      return [...taskList].sort((a, b) => {
+        const aOrder = a.wbsOrder !== undefined ? a.wbsOrder : 9999;
+        const bOrder = b.wbsOrder !== undefined ? b.wbsOrder : 9999;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.id.localeCompare(b.id);
+      });
+    };
+
     projects.forEach(p => {
       groups.push({
         projectId: p.id,
         projectName: p.name,
         color: p.color,
         project: p,
-        tasks: filteredTasks.filter(t => t.projectId === p.id)
+        tasks: sortTasks(filteredTasks.filter(t => t.projectId === p.id))
       });
     });
 
@@ -90,12 +102,41 @@ export default function Scheduler() {
         projectId: null,
         projectName: '未分類',
         color: 'var(--text-muted)',
-        tasks: noProjectTasks
+        tasks: sortTasks(noProjectTasks)
       });
     }
 
     return groups.filter(g => g.tasks.length > 0);
   }, [tasks, projects, showOnlyMine, myName]);
+
+  // WBSドラッグ＆ドロップハンドラ
+  const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
+    const { destination, source } = result;
+    if (!destination) return;
+    if (destination.index === source.index) return;
+
+    // 現在のグループに属するタスクを取得（現在のソート順）
+    const filteredTasks = showOnlyMine && myName
+      ? tasks.filter(t => t.assignee === myName)
+      : tasks;
+      
+    const groupTasks = [...filteredTasks]
+      .filter(t => t.projectId === projectId)
+      .sort((a, b) => {
+        const aOrder = a.wbsOrder !== undefined ? a.wbsOrder : 9999;
+        const bOrder = b.wbsOrder !== undefined ? b.wbsOrder : 9999;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.id.localeCompare(b.id);
+      });
+
+    // 配列の並び替え
+    const [reorderedItem] = groupTasks.splice(source.index, 1);
+    groupTasks.splice(destination.index, 0, reorderedItem);
+
+    // 新しい順序のIDリストを送り出す
+    const orderedIds = groupTasks.map(t => t.id);
+    reorderTasks(orderedIds);
+  };
 
   // ================= ドラッグ＆ドロップ =================
   const handlePointerDown = (e: React.PointerEvent, taskId: string, type: 'move' | 'resize-left' | 'resize-right') => {
@@ -179,14 +220,50 @@ export default function Scheduler() {
                     <FolderKanban size={16} />
                     {group.projectName}
                   </div>
-                  {group.tasks.map(task => (
-                    <div key={task.id} style={styles.taskRowLeft} onClick={() => setEditingTaskId(task.id)}>
-                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: getStatusColor(task.status), flexShrink: 0 }} />
-                      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem' }}>
-                        {task.title}
-                      </span>
-                    </div>
-                  ))}
+                  
+                  <DragDropContext onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>
+                    <Droppable droppableId={`wbs-list-${group.projectId || 'unassigned'}`}>
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          style={{ display: 'flex', flexDirection: 'column' }}
+                        >
+                          {group.tasks.map((task, index) => (
+                            <Draggable key={task.id} draggableId={task.id} index={index}>
+                              {(provided, snapshot) => {
+                                const rowElement = (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    style={{
+                                      ...styles.taskRowLeft,
+                                      ...provided.draggableProps.style,
+                                      transform: snapshot.isDragging ? provided.draggableProps.style?.transform : 'translate(0, 0)',
+                                      background: snapshot.isDragging ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                                    }}
+                                    onClick={() => setEditingTaskId(task.id)}
+                                  >
+                                    <GripVertical size={14} style={{ color: 'var(--text-muted)', cursor: 'grab', marginRight: '-0.25rem' }} />
+                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: getStatusColor(task.status), flexShrink: 0 }} />
+                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem' }}>
+                                      {task.title}
+                                    </span>
+                                  </div>
+                                );
+                                if (snapshot.isDragging) {
+                                  return createPortal(rowElement, document.body);
+                                }
+                                return rowElement;
+                              }}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                        </div>
+                      )}
+                    </Droppable>
+                  </DragDropContext>
                 </div>
               ))}
             </div>

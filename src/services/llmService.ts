@@ -14,6 +14,7 @@ export interface TaskExtractResult {
   dueDate?: string;
   progress?: number;
   isNew?: boolean;
+  wbsOrder?: number;
 }
 
 export interface Project {
