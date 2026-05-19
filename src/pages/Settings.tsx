@@ -6,7 +6,7 @@ export default function Settings() {
   const { members, settings, saveSettings } = useAppContext();
   const [llmEndpoint, setLlmEndpoint] = useState('http://localhost:8080/v1');
   const [imageDir, setImageDir] = useState('/Users/monaka/Pictures/Screenshots');
-  const [minutesDir, setMinutesDir] = useState('/Users/monaka/Projects/05_pj_dashboard/議事録一覧');
+  const [minutesDir, setMinutesDir] = useState('./議事録一覧');
   const [reportTemplatePath, setReportTemplatePath] = useState('');
   const [myName, setMyName] = useState('');
   const [monthlyWorkload, setMonthlyWorkload] = useState('155');

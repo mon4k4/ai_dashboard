@@ -19,7 +19,7 @@ export default function Members() {
   };
 
   const handleExtractFromMinutes = async () => {
-    const targetDir = localStorage.getItem('imageDir') || '/Users/monaka/Projects/05_pj_dashboard/議事録一覧';
+    const targetDir = localStorage.getItem('imageDir') || './議事録一覧';
     let unprocessedFiles = [];
     try {
       const res = await fetch(`/api/files/unprocessed?dir=${encodeURIComponent(targetDir)}`);

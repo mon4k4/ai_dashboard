@@ -14,7 +14,7 @@ export default function Minutes() {
   const [images, setImages] = useState<string[]>([]);
   const [isFormExpanded, setIsFormExpanded] = useState(false);
 
-  const targetDir = localStorage.getItem('minutesDir') || '/Users/monaka/Projects/05_pj_dashboard/議事録一覧';
+  const targetDir = localStorage.getItem('minutesDir') || './議事録一覧';
 
   const handleBatchProcess = async () => {
     try {
