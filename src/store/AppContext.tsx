@@ -48,8 +48,13 @@ interface AppState {
   updateReport: (id: string, updates: Partial<WeeklyReport>) => void;
   settings: Record<string, string>;
   saveSettings: (newSettings: Record<string, string>) => void;
-  pendingMembers: string[];
-  clearPendingMembers: () => void;
+  pendingMembers: PendingMemberGroup[];
+  clearPendingMembers: (minuteTitle?: string) => void;
+}
+
+export interface PendingMemberGroup {
+  minuteTitle: string;
+  names: string[];
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -64,7 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [batchStatus, setBatchStatus] = useState<BatchStatus>({
     isProcessing: false, currentFile: null, processedCount: 0, totalCount: 0, message: ''
   });
-  const [pendingMembers, setPendingMembers] = useState<string[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<PendingMemberGroup[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const sseRef = useRef<EventSource | null>(null);
 
@@ -191,7 +196,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       es.addEventListener('new_members_extracted', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
         if (data.names && Array.isArray(data.names)) {
-          setPendingMembers(prev => Array.from(new Set([...prev, ...data.names])));
+          const title = data.minuteTitle || '新規議事録';
+          setPendingMembers(prev => {
+            const existingIdx = prev.findIndex(g => g.minuteTitle === title);
+            if (existingIdx >= 0) {
+              const updated = [...prev];
+              updated[existingIdx] = {
+                ...updated[existingIdx],
+                names: Array.from(new Set([...updated[existingIdx].names, ...data.names]))
+              };
+              return updated;
+            } else {
+              return [...prev, { minuteTitle: title, names: data.names }];
+            }
+          });
         }
       });
 
@@ -262,8 +280,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMembers(prev => prev.filter(m => m.id !== id));
   }, []);
 
-  const clearPendingMembers = useCallback(() => {
-    setPendingMembers([]);
+  const clearPendingMembers = useCallback((minuteTitle?: string) => {
+    if (minuteTitle) {
+      setPendingMembers(prev => prev.filter(g => g.minuteTitle !== minuteTitle));
+    } else {
+      setPendingMembers([]);
+    }
   }, []);
 
   const addReport = useCallback((report: WeeklyReport) => {

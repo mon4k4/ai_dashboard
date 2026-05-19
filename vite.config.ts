@@ -272,7 +272,7 @@ async function processFile(file, llmEndpoint) {
     }
     
     if (newMembers.length > 0) {
-      broadcast('new_members_extracted', { names: newMembers });
+      broadcast('new_members_extracted', { names: newMembers, minuteTitle: title });
     }
   }
 
