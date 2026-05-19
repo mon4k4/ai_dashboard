@@ -21,6 +21,7 @@ export default function Kanban() {
   const [error, setError] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
   
   const myName = localStorage.getItem('myName') || '';
 
@@ -78,25 +79,44 @@ export default function Kanban() {
         </label>
       </div>
 
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Bot size={20} color="var(--accent-primary)" />
-          タスク自動抽出
-        </h3>
-        <textarea
-          value={transcript}
-          onChange={(e) => setTranscript(e.target.value)}
-          placeholder="Zoomの文字起こしテキストをここに貼り付けてください..."
-          rows={4}
-          style={{ resize: 'vertical' }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {error ? <span style={{ color: '#ef4444', fontSize: '0.875rem' }}>{error}</span> : <span />}
-          <button className="btn-primary" onClick={handleExtract} disabled={isLoading || !transcript.trim()}>
-            {isLoading ? <Loader2 size={18} className="spin" /> : <Plus size={18} />}
-            AIで抽出する
-          </button>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: isFormExpanded ? '1rem' : '0', transition: 'all 0.3s ease' }}>
+        <div 
+          onClick={() => setIsFormExpanded(!isFormExpanded)} 
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+        >
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+            <Bot size={20} color="var(--accent-primary)" />
+            タスク自動抽出
+          </h3>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            {isFormExpanded ? '閉じる ▲' : '開く ▼'}
+          </span>
         </div>
+
+        {isFormExpanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+            <textarea
+              value={transcript}
+              onChange={(e) => setTranscript(e.target.value)}
+              placeholder="Zoomの文字起こしテキストをここに貼り付けてください..."
+              rows={4}
+              style={{ resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {error ? <span style={{ color: '#ef4444', fontSize: '0.875rem' }}>{error}</span> : <span />}
+              <button className="btn-primary" onClick={handleExtract} disabled={isLoading || !transcript.trim()}>
+                {isLoading ? <Loader2 size={18} className="spin" /> : <Plus size={18} />}
+                AIで抽出する
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
