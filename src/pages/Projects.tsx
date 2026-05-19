@@ -1,0 +1,344 @@
+import { useState, useMemo } from 'react';
+import { FolderKanban, Plus, Trash2, Calendar } from 'lucide-react';
+import { useAppContext } from '../store/AppContext';
+import type { Project } from '../services/llmService';
+
+const generateColors = () => [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
+  '#06b6d4', '#3b82f6', '#6366f1', '#a855f7', '#ec4899'
+];
+
+export default function Projects() {
+  const { projects, addProject, updateProject, deleteProject } = useAppContext();
+  
+  const [isEditing, setIsEditing] = useState<string | null>(null);
+  
+  // New Project Form State
+  const [newName, setNewName] = useState('');
+  const [newSummary, setNewSummary] = useState('');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
+  const [newClient, setNewClient] = useState('');
+  const [newOrder, setNewOrder] = useState('');
+
+  const getMonthsBetween = (start: string, end: string) => {
+    if (!start || !end) return [];
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) return [];
+
+    const months = [];
+    let current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const endBound = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+    while (current <= endBound) {
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, '0');
+      months.push(`${year}-${month}`);
+      current.setMonth(current.getMonth() + 1);
+    }
+    return months;
+  };
+
+  const handleAdd = () => {
+    if (!newName.trim() || !newStartDate || !newEndDate) {
+      alert('プロジェクト名、開始日、終了日は必須です。');
+      return;
+    }
+    
+    const colors = generateColors();
+    const randomColor = colors[projects.length % colors.length];
+
+    addProject({
+      id: `proj-${Date.now()}`,
+      name: newName.trim(),
+      summary: newSummary.trim(),
+      startDate: newStartDate,
+      endDate: newEndDate,
+      client: newClient.trim(),
+      orderName: newOrder.trim(),
+      color: randomColor,
+      workload: {}
+    });
+
+    setNewName('');
+    setNewSummary('');
+    setNewStartDate('');
+    setNewEndDate('');
+    setNewClient('');
+    setNewOrder('');
+  };
+
+  const { allMonths, totalWorkloadPerMonth } = useMemo(() => {
+    const monthSet = new Set<string>();
+    const totals: Record<string, number> = {};
+    
+    projects.forEach(p => {
+      const pMonths = new Set([
+        ...getMonthsBetween(p.startDate, p.endDate),
+        ...Object.keys(p.workload || {})
+      ]);
+      pMonths.forEach(m => {
+        monthSet.add(m);
+        totals[m] = (totals[m] || 0) + (p.workload[m] || 0);
+      });
+    });
+
+    const sortedMonths = Array.from(monthSet).sort();
+    return { allMonths: sortedMonths, totalWorkloadPerMonth: totals };
+  }, [projects]);
+
+  const baseWorkload = parseInt(localStorage.getItem('monthlyWorkload') || '155');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1.5rem', overflowY: 'auto' }}>
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, flexShrink: 0 }}>
+        <FolderKanban size={24} color="var(--accent-primary)" />
+        Projects
+      </h2>
+
+      {/* 月別 全体稼働率 */}
+      {allMonths.length > 0 && (
+        <div className="card" style={{ padding: '1.5rem', flexShrink: 0 }}>
+          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Calendar size={20} color="var(--accent-primary)" />
+            月別 合計稼働率 (基準: {baseWorkload}h/月)
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.workloadTable}>
+              <thead>
+                <tr>
+                  {allMonths.map(m => (
+                    <th key={m} style={styles.workloadTh}>{m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {allMonths.map(m => {
+                    const hours = totalWorkloadPerMonth[m] || 0;
+                    const rate = ((hours / baseWorkload) * 100).toFixed(1);
+                    const isOver = hours > baseWorkload;
+                    return (
+                      <td key={m} style={{ ...styles.workloadTd, textAlign: 'center', padding: '0.75rem', background: isOver ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: isOver ? '#ef4444' : 'var(--text-primary)' }}>
+                          {rate}%
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {hours}h
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 新規プロジェクト追加フォーム */}
+      <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', flexShrink: 0 }}>
+        <h3 style={{ margin: 0, fontSize: '1.1rem' }}>新規プロジェクト作成</h3>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={styles.label}>プロジェクト名 *</label>
+            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} style={styles.input} />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <label style={styles.label}>取引先</label>
+            <input type="text" value={newClient} onChange={e => setNewClient(e.target.value)} style={styles.input} />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <label style={styles.label}>オーダ名</label>
+            <input type="text" value={newOrder} onChange={e => setNewOrder(e.target.value)} style={styles.input} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <div style={{ flex: 1 }}>
+            <label style={styles.label}>概要</label>
+            <input type="text" value={newSummary} onChange={e => setNewSummary(e.target.value)} style={styles.input} />
+          </div>
+          <div style={{ width: '150px' }}>
+            <label style={styles.label}>開始日 *</label>
+            <input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} style={styles.input} />
+          </div>
+          <div style={{ width: '150px' }}>
+            <label style={styles.label}>終了日 *</label>
+            <input type="date" value={newEndDate} onChange={e => setNewEndDate(e.target.value)} style={styles.input} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button className="btn-primary" onClick={handleAdd} style={{ height: '42px' }}>
+              <Plus size={18} /> 追加
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* プロジェクト一覧 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        {projects.length === 0 ? (
+          <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            プロジェクトがありません。
+          </div>
+        ) : (
+          projects.map(project => {
+            const months = getMonthsBetween(project.startDate, project.endDate);
+            
+            return (
+              <div key={project.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderLeft: `4px solid ${project.color}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input 
+                        value={project.name}
+                        onChange={e => updateProject(project.id, { name: e.target.value })}
+                        style={{ ...styles.ghostInput, fontSize: '1.25rem', fontWeight: 'bold', padding: '0.2rem' }}
+                      />
+                      <input 
+                        type="color" 
+                        value={project.color}
+                        onChange={e => updateProject(project.id, { color: e.target.value })}
+                        style={{ width: '30px', height: '30px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer', background: 'transparent' }}
+                        title="プロジェクトカラー"
+                      />
+                    </div>
+                    <input 
+                      value={project.summary}
+                      placeholder="概要"
+                      onChange={e => updateProject(project.id, { summary: e.target.value })}
+                      style={{ ...styles.ghostInput, color: 'var(--text-muted)' }}
+                    />
+                  </div>
+                  <button onClick={() => deleteProject(project.id)} style={styles.iconBtn} title="削除">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.label}>取引先</label>
+                    <input value={project.client} onChange={e => updateProject(project.id, { client: e.target.value })} style={styles.ghostInput} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.label}>オーダ名</label>
+                    <input value={project.orderName} onChange={e => updateProject(project.id, { orderName: e.target.value })} style={styles.ghostInput} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.label}>開始日</label>
+                    <input type="date" value={project.startDate} onChange={e => updateProject(project.id, { startDate: e.target.value })} style={styles.ghostInput} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.label}>終了日</label>
+                    <input type="date" value={project.endDate} onChange={e => updateProject(project.id, { endDate: e.target.value })} style={styles.ghostInput} />
+                  </div>
+                </div>
+
+                {/* 割り当て工数テーブル */}
+                <div>
+                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>月別割り当て工数 (時間)</h4>
+                  {months.length === 0 ? (
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>開始日と終了日を正しく設定してください。</span>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={styles.workloadTable}>
+                        <thead>
+                          <tr>
+                            {months.map(m => (
+                              <th key={m} style={styles.workloadTh}>{m}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            {months.map(m => (
+                              <td key={m} style={styles.workloadTd}>
+                                <input 
+                                  type="number"
+                                  min="0"
+                                  value={project.workload[m] || ''}
+                                  onChange={e => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    updateProject(project.id, { workload: { ...project.workload, [m]: val } });
+                                  }}
+                                  style={styles.workloadInput}
+                                  placeholder="0"
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  label: {
+    display: 'block',
+    fontSize: '0.85rem',
+    color: 'var(--text-muted)',
+    marginBottom: '0.5rem',
+  },
+  input: {
+    width: '100%',
+    padding: '0.75rem',
+    background: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--text-primary)',
+  },
+  ghostInput: {
+    width: '100%',
+    padding: '0.2rem 0.5rem',
+    background: 'transparent',
+    border: '1px dashed transparent',
+    color: 'var(--text-primary)',
+    transition: 'all 0.2s',
+    borderRadius: '4px',
+  },
+  iconBtn: {
+    background: 'transparent',
+    color: '#ef4444',
+    padding: '0.5rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    border: 'none',
+  },
+  workloadTable: {
+    borderCollapse: 'collapse' as const,
+    width: '100%',
+  },
+  workloadTh: {
+    background: 'rgba(0,0,0,0.3)',
+    padding: '0.5rem',
+    fontSize: '0.8rem',
+    fontWeight: 500,
+    border: '1px solid var(--border-color)',
+    textAlign: 'center' as const,
+    minWidth: '80px',
+  },
+  workloadTd: {
+    padding: '0',
+    border: '1px solid var(--border-color)',
+  },
+  workloadInput: {
+    width: '100%',
+    height: '100%',
+    padding: '0.5rem',
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--text-primary)',
+    textAlign: 'center' as const,
+    fontSize: '0.9rem',
+  }
+};
