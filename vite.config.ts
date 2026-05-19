@@ -152,6 +152,52 @@ async function callLlm(endpoint, messages, label, temp = 0.3) {
     throw err;
   }
 }
+// ====== 未処理アイテムの取得（フォルダおよびフラットファイル両対応） ======
+function getUnprocessedItems(dirPath) {
+  const items = [];
+  if (!fs.existsSync(dirPath)) return items;
+  
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      
+      // 1. フォルダの場合
+      if (entry.isDirectory()) {
+        if (entry.name.includes('_処理済み')) continue;
+        
+        const subFiles = fs.readdirSync(fullPath);
+        const txtFile = subFiles.find(sf => sf.endsWith('.txt'));
+        if (txtFile) {
+          const txtFilePath = path.join(fullPath, txtFile);
+          const content = fs.readFileSync(txtFilePath, 'utf-8');
+          items.push({
+            filename: entry.name,
+            fullPath: fullPath,
+            content: content,
+            isFolder: true,
+            txtFilePath: txtFilePath
+          });
+        }
+      } 
+      // 2. フラットファイルの場合
+      else if (entry.isFile()) {
+        if (entry.name.endsWith('.txt') && !entry.name.includes('_処理済み')) {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          items.push({
+            filename: entry.name,
+            fullPath: fullPath,
+            content: content,
+            isFolder: false
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to read directory entries', e);
+  }
+  return items;
+}
 
 // ====== ファイル処理 ======
 async function processFile(file, llmEndpoint) {
@@ -170,12 +216,27 @@ async function processFile(file, llmEndpoint) {
   const tasks = parsed.map(t => ({ ...t, id: genId('task'), status: 'todo', isNew: true }));
   
   let extractedDate = new Date().toISOString().split('T')[0];
-  const dateMatch = file.filename.match(/^(\d{4})(\d{2})(\d{2})/);
-  if (dateMatch) {
-    extractedDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+  let title = file.filename.replace('.txt', '');
+  
+  if (file.isFolder) {
+    // フォルダ名から日時とタイトルをパース (例: 2026-04-05 16.41.24 title)
+    // 正規表現で 'YYYY-MM-DD HH.mm.ss Title' を抽出
+    const match = file.filename.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2})\.(\d{2})\.(\d{2})\s+(.+)$/);
+    if (match) {
+      extractedDate = match[1]; // YYYY-MM-DD
+      title = match[5]; // Title
+    } else {
+      title = file.filename;
+    }
+  } else {
+    // 従来のフラットファイル処理 (例: 202605200930_Title)
+    const dateMatch = file.filename.match(/^(\d{4})(\d{2})(\d{2})/);
+    if (dateMatch) {
+      extractedDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+    }
   }
   
-  const minute = { id: genId('min'), date: extractedDate, title: file.filename.replace('.txt', ''), summary: sumResult.output, content: file.content, extractedTasks: tasks };
+  const minute = { id: genId('min'), date: extractedDate, title: title, summary: sumResult.output, content: file.content, extractedTasks: tasks };
   state.createdTasks.push(...tasks);
   state.createdMinutes.push(minute);
   for (const t of tasks) broadcast('task_created', t);
@@ -216,10 +277,14 @@ async function processFile(file, llmEndpoint) {
   }
 
   try {
-    const ext = path.extname(file.fullPath);
-    const base = path.basename(file.fullPath, ext);
-    const dir = path.dirname(file.fullPath);
-    fs.renameSync(file.fullPath, path.join(dir, `${base}_処理済み${ext}`));
+    if (file.isFolder) {
+      fs.renameSync(file.fullPath, file.fullPath + '_処理済み');
+    } else {
+      const ext = path.extname(file.fullPath);
+      const base = path.basename(file.fullPath, ext);
+      const dir = path.dirname(file.fullPath);
+      fs.renameSync(file.fullPath, path.join(dir, `${base}_処理済み${ext}`));
+    }
   } catch (e) { }
 
   state.processedCount++;
@@ -230,8 +295,7 @@ async function processBatch(dir, llmEndpoint) {
   state.isProcessing = true;
   state.processedCount = 0;
   try {
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.txt') && !f.includes('_処理済み'))
-      .map(fn => ({ filename: fn, fullPath: path.join(dir, fn), content: fs.readFileSync(path.join(dir, fn), 'utf-8') }));
+    const files = getUnprocessedItems(dir);
     state.totalCount = files.length;
     if (!files.length) { broadcast('batch_status', { status: 'no_files' }); return; }
     broadcast('batch_status', { status: 'started', totalCount: files.length });
@@ -320,7 +384,7 @@ function backendPlugin() {
             const url = new URL(req.url, `http://${req.headers.host}`);
             const dirPath = url.searchParams.get('dir');
             if (!dirPath || !fs.existsSync(dirPath)) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Invalid path' })); return; }
-            const results = fs.readdirSync(dirPath).filter(f => f.endsWith('.txt') && !f.includes('_処理済み')).map(fn => ({ filename: fn, fullPath: path.join(dirPath, fn), content: fs.readFileSync(path.join(dirPath, fn), 'utf-8') }));
+            const results = getUnprocessedItems(dirPath);
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(results));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
@@ -331,9 +395,17 @@ function backendPlugin() {
           try {
             const { filePath } = await parseBody(req);
             if (!filePath || !fs.existsSync(filePath)) { res.statusCode = 400; res.end(JSON.stringify({ error: 'File not found' })); return; }
-            const ext = path.extname(filePath); const base = path.basename(filePath, ext); const dir = path.dirname(filePath);
-            const newPath = path.join(dir, `${base}_処理済み${ext}`);
-            fs.renameSync(filePath, newPath);
+            const stats = fs.statSync(filePath);
+            let newPath = filePath + '_処理済み';
+            if (stats.isDirectory()) {
+              fs.renameSync(filePath, newPath);
+            } else {
+              const ext = path.extname(filePath); 
+              const base = path.basename(filePath, ext); 
+              const dir = path.dirname(filePath);
+              newPath = path.join(dir, `${base}_処理済み${ext}`);
+              fs.renameSync(filePath, newPath);
+            }
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true, newPath }));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
