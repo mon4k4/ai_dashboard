@@ -42,6 +42,9 @@ export interface ProjectMeeting {
   endDate?: string; // YYYY-MM-DD for recurring
   dayOfWeek?: number; // 0-6 for recurring
   time?: string; // e.g. "14:00"
+  startTime?: string; // e.g. "14:00"
+  endTime?: string; // e.g. "15:00"
+  exceptions?: string[]; // YYYY-MM-DD for excluded recurring instances
 }
 
 export interface TeamMember {

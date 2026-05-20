@@ -428,6 +428,7 @@ const styles = {
 };
 
 function ProjectMeetingManager({ project, updateProject }: { project: Project, updateProject: (id: string, updates: Partial<Project>) => void }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const meetings = project.meetings || [];
@@ -438,10 +439,29 @@ function ProjectMeetingManager({ project, updateProject }: { project: Project, u
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [dayOfWeek, setDayOfWeek] = useState<number>(1);
-  const [time, setTime] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+
+  const addOneHour = (timeStr: string) => {
+    if (!timeStr) return '';
+    const [hourStr, minStr] = timeStr.split(':');
+    let hour = parseInt(hourStr, 10);
+    let min = parseInt(minStr, 10);
+    hour = (hour + 1) % 24;
+    const newHourStr = String(hour).padStart(2, '0');
+    const newMinStr = String(min).padStart(2, '0');
+    return `${newHourStr}:${newMinStr}`;
+  };
+
+  const handleStartTimeChange = (val: string) => {
+    setStartTime(val);
+    if (val) {
+      setEndTime(addOneHour(val));
+    }
+  };
 
   const resetForm = () => {
-    setTitle(''); setIsRecurring(false); setDate(''); setStartDate(''); setEndDate(''); setDayOfWeek(1); setTime('');
+    setTitle(''); setIsRecurring(false); setDate(''); setStartDate(''); setEndDate(''); setDayOfWeek(1); setStartTime(''); setEndTime('');
     setIsAdding(false); setEditingId(null);
   };
 
@@ -456,12 +476,16 @@ function ProjectMeetingManager({ project, updateProject }: { project: Project, u
       startDate: isRecurring ? startDate : undefined,
       endDate: isRecurring ? endDate : undefined,
       dayOfWeek: isRecurring ? dayOfWeek : undefined,
-      time
+      startTime,
+      endTime,
+      time: startTime // 互換性のため
     };
 
     let newMeetings;
     if (editingId) {
-      newMeetings = meetings.map(m => m.id === editingId ? newMeeting : m);
+      const existing = meetings.find(m => m.id === editingId);
+      const exceptions = existing ? existing.exceptions : undefined;
+      newMeetings = meetings.map(m => m.id === editingId ? { ...newMeeting, exceptions } : m);
     } else {
       newMeetings = [...meetings, newMeeting];
     }
@@ -477,7 +501,8 @@ function ProjectMeetingManager({ project, updateProject }: { project: Project, u
     setStartDate(m.startDate || '');
     setEndDate(m.endDate || '');
     setDayOfWeek(m.dayOfWeek ?? 1);
-    setTime(m.time || '');
+    setStartTime(m.startTime || m.time || '');
+    setEndTime(m.endTime || (m.time ? addOneHour(m.time) : ''));
     setEditingId(m.id);
     setIsAdding(true);
   };
@@ -490,85 +515,114 @@ function ProjectMeetingManager({ project, updateProject }: { project: Project, u
 
   return (
     <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+      <div 
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', cursor: 'pointer' }}
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
         <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
           <Clock size={16} /> 打ち合わせ管理
         </h4>
-        {!isAdding && (
-          <button className="btn-secondary" onClick={() => setIsAdding(true)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        {!isAdding && !isCollapsed && (
+          <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); setIsAdding(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <Plus size={14} /> 追加
           </button>
         )}
       </div>
 
-      {isAdding && (
-        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: '150px' }}>
-              <label style={styles.label}>タイトル *</label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} style={styles.input} placeholder="例: 開発定例" />
-            </div>
-            <div style={{ width: '120px' }}>
-              <label style={styles.label}>種類</label>
-              <select value={isRecurring ? 'recurring' : 'single'} onChange={e => setIsRecurring(e.target.value === 'recurring')} style={styles.input}>
-                <option value="single">単発</option>
-                <option value="recurring">定期 (毎週)</option>
-              </select>
-            </div>
-            {isRecurring ? (
-              <>
-                <div style={{ width: '100px' }}>
-                  <label style={styles.label}>曜日</label>
-                  <select value={dayOfWeek} onChange={e => setDayOfWeek(Number(e.target.value))} style={styles.input}>
-                    {daysStr.map((d, i) => <option key={i} value={i}>{d}曜</option>)}
+      {!isCollapsed && (
+        <>
+          {isAdding && (
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '150px' }}>
+                  <label style={styles.label}>タイトル *</label>
+                  <input type="text" value={title} onChange={e => setTitle(e.target.value)} style={styles.input} placeholder="例: 開発定例" />
+                </div>
+                <div style={{ width: '120px' }}>
+                  <label style={styles.label}>種類</label>
+                  <select 
+                    value={isRecurring ? 'recurring' : 'single'} 
+                    onChange={e => {
+                      const val = e.target.value === 'recurring';
+                      setIsRecurring(val);
+                      if (val) {
+                        if (!startDate) setStartDate(project.startDate || '');
+                        if (!endDate) setEndDate(project.endDate || '');
+                      }
+                    }} 
+                    style={styles.input}
+                  >
+                    <option value="single">単発</option>
+                    <option value="recurring">定期 (毎週)</option>
                   </select>
                 </div>
-                <div style={{ width: '135px' }}>
-                  <label style={styles.label}>開始日 (任意)</label>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={styles.input} />
+                {isRecurring ? (
+                  <>
+                    <div style={{ width: '100px' }}>
+                      <label style={styles.label}>曜日</label>
+                      <select value={dayOfWeek} onChange={e => setDayOfWeek(Number(e.target.value))} style={styles.input}>
+                        {daysStr.map((d, i) => <option key={i} value={i}>{d}曜</option>)}
+                      </select>
+                    </div>
+                    <div style={{ width: '135px' }}>
+                      <label style={styles.label}>開始日</label>
+                      <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={styles.input} />
+                    </div>
+                    <div style={{ width: '135px' }}>
+                      <label style={styles.label}>終了日</label>
+                      <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={styles.input} />
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ width: '140px' }}>
+                    <label style={styles.label}>日付</label>
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} style={styles.input} />
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', width: '220px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.label}>開始時間</label>
+                    <input type="time" value={startTime} onChange={e => handleStartTimeChange(e.target.value)} style={styles.input} />
+                  </div>
+                  <span style={{ marginTop: '1.2rem', color: 'var(--text-muted)' }}>〜</span>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.label}>終了時間</label>
+                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={styles.input} />
+                  </div>
                 </div>
-                <div style={{ width: '135px' }}>
-                  <label style={styles.label}>終了日 (任意)</label>
-                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={styles.input} />
-                </div>
-              </>
-            ) : (
-              <div style={{ width: '140px' }}>
-                <label style={styles.label}>日付</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={styles.input} />
               </div>
-            )}
-            <div style={{ width: '120px' }}>
-              <label style={styles.label}>時間</label>
-              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={styles.input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button className="btn-secondary" onClick={resetForm} style={{ padding: '0.25rem 0.75rem' }}><X size={14} /> キャンセル</button>
+                <button className="btn-primary" onClick={handleSave} disabled={!title.trim()} style={{ padding: '0.25rem 0.75rem' }}><Save size={14} /> 保存</button>
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-            <button className="btn-secondary" onClick={resetForm} style={{ padding: '0.25rem 0.75rem' }}><X size={14} /> キャンセル</button>
-            <button className="btn-primary" onClick={handleSave} disabled={!title.trim()} style={{ padding: '0.25rem 0.75rem' }}><Save size={14} /> 保存</button>
-          </div>
-        </div>
-      )}
+          )}
 
-      {meetings.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {meetings.map(m => (
-            <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontWeight: 500 }}>{m.title}</span>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {m.isRecurring ? `毎週${daysStr[m.dayOfWeek!]}曜${(m.startDate || m.endDate) ? ` (${m.startDate || ''} 〜 ${m.endDate || ''})` : ''}` : m.date} {m.time}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => handleEdit(m)} style={{ ...styles.iconBtn, color: 'var(--text-muted)', padding: '0.25rem' }} title="編集"><Edit2 size={16} /></button>
-                <button onClick={() => handleDelete(m.id)} style={{ ...styles.iconBtn, padding: '0.25rem' }} title="削除"><Trash2 size={16} /></button>
-              </div>
+          {meetings.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {meetings.map(m => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span style={{ fontWeight: 500 }}>{m.title}</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      {m.isRecurring ? `毎週${daysStr[m.dayOfWeek!]}曜${(m.startDate || m.endDate) ? ` (${m.startDate || ''} 〜 ${m.endDate || ''})` : ''}` : m.date}
+                      {' '}
+                      {m.startTime || m.time}
+                      {m.endTime && ` 〜 ${m.endTime}`}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => handleEdit(m)} style={{ ...styles.iconBtn, color: 'var(--text-muted)', padding: '0.25rem' }} title="編集"><Edit2 size={16} /></button>
+                    <button onClick={() => handleDelete(m.id)} style={{ ...styles.iconBtn, padding: '0.25rem' }} title="削除"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : (
-        !isAdding && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>打ち合わせは登録されていません。</div>
+          ) : (
+            !isAdding && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>打ち合わせは登録されていません。</div>
+          )}
+        </>
       )}
     </div>
   );
