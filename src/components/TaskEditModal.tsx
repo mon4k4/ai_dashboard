@@ -7,7 +7,7 @@ interface TaskEditModalProps {
 }
 
 export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
-  const { tasks, projects, members, updateTask, deleteTask } = useAppContext();
+  const { tasks, projects, members, updateTask } = useAppContext();
   
   const task = tasks.find(t => t.id === taskId);
   if (!task) return null;
@@ -112,6 +112,16 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
               value={task.details || ''} 
               onChange={e => updateTask(task.id, { details: e.target.value })}
               style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={styles.label}>対応結果</label>
+            <textarea 
+              value={task.actionResult || ''} 
+              onChange={e => updateTask(task.id, { actionResult: e.target.value })}
+              placeholder="対応結果や進捗メモを入力してください..."
+              style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
             />
           </div>
         </div>

@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
-import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X } from 'lucide-react';
+import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X, Sparkles, Loader2 } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
+import { generateProjectStatus } from '../services/llmService';
 import type { Project } from '../services/llmService';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 const generateColors = () => [
   '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
@@ -9,9 +11,24 @@ const generateColors = () => [
 ];
 
 export default function Projects() {
-  const { projects, addProject, updateProject, deleteProject } = useAppContext();
+  const { projects, addProject, updateProject, deleteProject, tasks, minutes } = useAppContext();
   
-  const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState<Record<string, boolean>>({});
+
+  const handleGenerateAIStatus = async (project: Project) => {
+    setIsGenerating(prev => ({ ...prev, [project.id]: true }));
+    try {
+      const projTasks = tasks.filter(t => t.projectId === project.id);
+      const projMinutes = minutes.filter(m => m.projectId === project.id);
+      
+      const result = await generateProjectStatus(project, projMinutes, projTasks);
+      updateProject(project.id, { aiStatusSummary: result });
+    } catch (err: any) {
+      alert('AI生成に失敗しました: ' + (err.message || err));
+    } finally {
+      setIsGenerating(prev => ({ ...prev, [project.id]: false }));
+    }
+  };
   
   // New Project Form State
   const [newName, setNewName] = useState('');
@@ -274,6 +291,44 @@ export default function Projects() {
                 </div>
 
                 <ProjectMeetingManager project={project} updateProject={updateProject} />
+
+                {/* AI状況と概要 */}
+                <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+                      <Sparkles size={18} color="var(--accent-primary)" />
+                      AI生成 状況・詳細概要
+                    </h4>
+                    <button 
+                      className="btn-primary" 
+                      onClick={() => handleGenerateAIStatus(project)} 
+                      disabled={isGenerating[project.id]}
+                      style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                    >
+                      {isGenerating[project.id] ? (
+                        <>
+                          <Loader2 size={14} className="spin" />
+                          生成中...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={14} />
+                          最新状況を生成
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {project.aiStatusSummary ? (
+                    <div className="card" style={{ background: 'rgba(99, 102, 241, 0.03)', border: '1px solid rgba(99, 102, 241, 0.15)', padding: '1.25rem' }}>
+                      <MarkdownRenderer content={project.aiStatusSummary} />
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', textAlign: 'center' }}>
+                      このプロジェクトに紐づく議事録やタスク情報から、AI状況と詳細概要を自動生成できます。
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })

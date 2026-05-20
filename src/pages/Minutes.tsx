@@ -7,12 +7,13 @@ import { format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 export default function Minutes() {
-  const { minutes, addMinute, batchStatus, members, addPendingMembers } = useAppContext();
+  const { minutes, addMinute, batchStatus, members, addPendingMembers, projects } = useAppContext();
   const [transcript, setTranscript] = useState('');
   const [title, setTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [isFormExpanded, setIsFormExpanded] = useState(false);
+  const [projectId, setProjectId] = useState('');
 
   const targetDir = localStorage.getItem('minutesDir') || './議事録一覧';
 
@@ -44,7 +45,8 @@ export default function Minutes() {
       addMinute({
         id: `min-${Date.now()}`,
         date: extractedDate,
-        title, summary: summaryText, extractedTasks: []
+        title, summary: summaryText, extractedTasks: [],
+        projectId: projectId || undefined
       });
 
       // メンバーの自動抽出（手動）
@@ -77,7 +79,7 @@ export default function Minutes() {
         }
       }
 
-      setTranscript(''); setTitle(''); setImages([]);
+      setTranscript(''); setTitle(''); setImages([]); setProjectId('');
     } catch (err) {
       alert('要約に失敗しました。LLMが起動しているか確認してください。');
     } finally { setIsLoading(false); }
@@ -133,7 +135,18 @@ export default function Minutes() {
         {isFormExpanded && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="会議のタイトル" style={{ fontWeight: 'bold' }} />
-            <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Zoom of 文字起こしを貼り付けてください..." rows={3} style={{ resize: 'vertical' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>関連プロジェクト</label>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+              >
+                <option value="">-- 未設定 --</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Zoomの文字起こしを貼り付けてください..." rows={3} style={{ resize: 'vertical' }} />
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
                 <ImageIcon size={18} /> スクショを選択
@@ -185,10 +198,11 @@ export default function Minutes() {
 }
 
 function MinuteCard({ minute }: { minute: any }) {
-  const { updateMinute } = useAppContext();
+  const { updateMinute, projects } = useAppContext();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [editSummary, setEditSummary] = useState(minute.summary);
+  const [editProjectId, setEditProjectId] = useState(minute.projectId || '');
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -205,14 +219,23 @@ function MinuteCard({ minute }: { minute: any }) {
   };
 
   const handleSave = () => {
-    updateMinute(minute.id, { summary: editSummary });
+    updateMinute(minute.id, { summary: editSummary, projectId: editProjectId || undefined });
     setIsEditing(false);
   };
 
+  const associatedProject = projects.find(p => p.id === minute.projectId);
+
   return (
     <div className="glass-panel" style={{ padding: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-        <h3 style={{ margin: 0, fontSize: '1.25rem' }}>{minute.title}</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <h3 style={{ margin: 0, fontSize: '1.25rem' }}>{minute.title}</h3>
+          {associatedProject && (
+            <div style={{ display: 'inline-flex', alignSelf: 'flex-start', background: 'rgba(255,255,255,0.03)', padding: '0.15rem 0.5rem', borderRadius: '4px', borderLeft: `3px solid ${associatedProject.color}`, fontSize: '0.75rem', color: associatedProject.color, fontWeight: 500 }}>
+              {associatedProject.name}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <span style={{ color: 'var(--text-muted)' }}>{minute.date}</span>
           <button className="btn-secondary" onClick={() => setIsEditing(!isEditing)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}>
@@ -223,6 +246,17 @@ function MinuteCard({ minute }: { minute: any }) {
       
       {isEditing ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>関連プロジェクト</label>
+            <select
+              value={editProjectId}
+              onChange={(e) => setEditProjectId(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)' }}
+            >
+              <option value="">-- 未選択 --</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           <textarea
             value={editSummary}
             onChange={(e) => setEditSummary(e.target.value)}

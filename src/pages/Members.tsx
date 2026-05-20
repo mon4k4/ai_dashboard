@@ -3,7 +3,7 @@ import { Users, Plus, Trash2, Wand2 } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 export default function Members() {
-  const { members, minutes, addMember, updateMember, deleteMember, pendingMembers, clearPendingMembers } = useAppContext();
+  const { members, addMember, updateMember, deleteMember, pendingMembers, clearPendingMembers } = useAppContext();
   const [newName, setNewName] = useState('');
   const [newGroup, setNewGroup] = useState('');
 
@@ -154,7 +154,7 @@ export default function Members() {
             <tr>
               <th style={styles.th}>名前</th>
               <th style={styles.th}>グループ</th>
-              <th style={styles.th} style={{ width: '80px', textAlign: 'center' }}>操作</th>
+              <th style={{ ...styles.th, width: '80px', textAlign: 'center' }}>操作</th>
             </tr>
           </thead>
           <tbody>

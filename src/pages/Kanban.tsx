@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { Bot, Loader2, Plus, GripVertical } from 'lucide-react';
+import { Bot, Loader2, Plus } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { extractTasksFromTranscript } from '../services/llmService';
 import type { TaskExtractResult } from '../services/llmService';
@@ -158,9 +158,14 @@ export default function Kanban() {
                                   }}
                                 >
                                   <div style={styles.taskTitle}>{task.title}</div>
-                                  {project && (
+                                   {project && (
                                     <div style={{ fontSize: '0.75rem', color: project.color, fontWeight: 500 }}>
                                       {project.name}
+                                    </div>
+                                  )}
+                                  {task.actionResult && (
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.03)', padding: '0.25rem 0.5rem', borderRadius: '4px', borderLeft: '2px solid var(--accent-primary)', marginTop: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={task.actionResult}>
+                                      <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>対応: </span>{task.actionResult}
                                     </div>
                                   )}
                                   <div style={styles.taskMeta}>

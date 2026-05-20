@@ -1,6 +1,7 @@
 import { buildTaskExtractionPrompt } from '../prompts/taskPrompts';
 import { buildSummaryPrompt } from '../prompts/summaryPrompts';
 import { buildWeeklyReportPrompt } from '../prompts/reportPrompts';
+import { buildProjectStatusPrompt } from '../prompts/projectPrompts';
 
 export interface TaskExtractResult {
   id: string;
@@ -15,6 +16,7 @@ export interface TaskExtractResult {
   progress?: number;
   isNew?: boolean;
   wbsOrder?: number;
+  actionResult?: string; // 対応結果
 }
 
 export interface Project {
@@ -28,6 +30,7 @@ export interface Project {
   color: string;
   workload: Record<string, number>; // e.g. { "2026-05": 160 }
   meetings?: ProjectMeeting[];
+  aiStatusSummary?: string; // AI生成の状況と詳細概要
 }
 
 export interface ProjectMeeting {
@@ -55,6 +58,7 @@ export interface MinuteSummary {
   content?: string;
   extractedTasks: TaskExtractResult[];
   images?: string[];
+  projectId?: string; // 関連プロジェクトID
 }
 
 export interface WeeklyReport {
@@ -62,6 +66,7 @@ export interface WeeklyReport {
   date: string;
   content: string;
 }
+
 
 const getEndpoint = () => {
   return localStorage.getItem('llmEndpoint') || 'http://localhost:8080/v1';
@@ -198,3 +203,38 @@ export async function generateWeeklyReport(minutes: MinuteSummary[], templateTex
   const { finalOutput } = parseThinkingResponse(rawContent);
   return finalOutput;
 }
+
+/**
+ * プロジェクトの状況と詳細概要をAIで生成する
+ */
+export async function generateProjectStatus(project: Project, minutes: MinuteSummary[], tasks: TaskExtractResult[]): Promise<string> {
+  const minutesText = minutes.map(m => `■ ${m.date} ${m.title}\n要約:\n${m.summary}`).join('\n\n');
+  const tasksText = tasks.map(t => {
+    let tStr = `- [${t.status}] ${t.title} (担当: ${t.assignee || '未設定'}`;
+    if (t.progress !== undefined) tStr += `, 進捗: ${t.progress}%`;
+    if (t.dueDate) tStr += `, 期日: ${t.dueDate}`;
+    tStr += `)`;
+    if (t.details) tStr += `\n  詳細: ${t.details}`;
+    if (t.actionResult) tStr += `\n  対応結果: ${t.actionResult}`;
+    return tStr;
+  }).join('\n');
+
+  const prompt = buildProjectStatusPrompt(project.name, project.summary, minutesText, tasksText);
+  const endpoint = `${getEndpoint()}/chat/completions`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+    })
+  });
+
+  if (!response.ok) throw new Error('LLM API request failed');
+  const data = await response.json();
+  const rawContent = data.choices[0].message.content;
+  const { finalOutput } = parseThinkingResponse(rawContent);
+  return finalOutput;
+}
+

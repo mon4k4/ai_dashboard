@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -442,7 +442,7 @@ export default function Scheduler() {
                   {group.project && group.project.meetings && (() => {
                     // プロジェクト内のミーティングを日付ごとにグループ化
                     const projectMeetingsByDate = new Map<string, any[]>();
-                    group.project.meetings.forEach(m => {
+                    group.project.meetings.forEach((m: any) => {
                       const dates: string[] = [];
                       if (m.isRecurring && m.dayOfWeek !== undefined) {
                         let cur = m.startDate && m.startDate > minDate ? m.startDate : minDate;
