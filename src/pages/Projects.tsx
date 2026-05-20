@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FolderKanban, Plus, Trash2, Calendar } from 'lucide-react';
+import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import type { Project } from '../services/llmService';
 
@@ -273,6 +273,7 @@ export default function Projects() {
                   )}
                 </div>
 
+                <ProjectMeetingManager project={project} updateProject={updateProject} />
               </div>
             );
           })
@@ -342,3 +343,150 @@ const styles = {
     fontSize: '0.9rem',
   }
 };
+
+function ProjectMeetingManager({ project, updateProject }: { project: Project, updateProject: (id: string, updates: Partial<Project>) => void }) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const meetings = project.meetings || [];
+  
+  const [title, setTitle] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [date, setDate] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [dayOfWeek, setDayOfWeek] = useState<number>(1);
+  const [time, setTime] = useState('');
+
+  const resetForm = () => {
+    setTitle(''); setIsRecurring(false); setDate(''); setStartDate(''); setEndDate(''); setDayOfWeek(1); setTime('');
+    setIsAdding(false); setEditingId(null);
+  };
+
+  const handleSave = () => {
+    if (!title.trim()) return;
+    
+    const newMeeting = {
+      id: editingId || `meet-${Date.now()}`,
+      title: title.trim(),
+      isRecurring,
+      date: !isRecurring ? date : undefined,
+      startDate: isRecurring ? startDate : undefined,
+      endDate: isRecurring ? endDate : undefined,
+      dayOfWeek: isRecurring ? dayOfWeek : undefined,
+      time
+    };
+
+    let newMeetings;
+    if (editingId) {
+      newMeetings = meetings.map(m => m.id === editingId ? newMeeting : m);
+    } else {
+      newMeetings = [...meetings, newMeeting];
+    }
+    
+    updateProject(project.id, { meetings: newMeetings });
+    resetForm();
+  };
+
+  const handleEdit = (m: any) => {
+    setTitle(m.title);
+    setIsRecurring(m.isRecurring);
+    setDate(m.date || '');
+    setStartDate(m.startDate || '');
+    setEndDate(m.endDate || '');
+    setDayOfWeek(m.dayOfWeek ?? 1);
+    setTime(m.time || '');
+    setEditingId(m.id);
+    setIsAdding(true);
+  };
+
+  const handleDelete = (id: string) => {
+    updateProject(project.id, { meetings: meetings.filter(m => m.id !== id) });
+  };
+
+  const daysStr = ['日', '月', '火', '水', '木', '金', '土'];
+
+  return (
+    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Clock size={16} /> 打ち合わせ管理
+        </h4>
+        {!isAdding && (
+          <button className="btn-secondary" onClick={() => setIsAdding(true)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Plus size={14} /> 追加
+          </button>
+        )}
+      </div>
+
+      {isAdding && (
+        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '150px' }}>
+              <label style={styles.label}>タイトル *</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} style={styles.input} placeholder="例: 開発定例" />
+            </div>
+            <div style={{ width: '120px' }}>
+              <label style={styles.label}>種類</label>
+              <select value={isRecurring ? 'recurring' : 'single'} onChange={e => setIsRecurring(e.target.value === 'recurring')} style={styles.input}>
+                <option value="single">単発</option>
+                <option value="recurring">定期 (毎週)</option>
+              </select>
+            </div>
+            {isRecurring ? (
+              <>
+                <div style={{ width: '100px' }}>
+                  <label style={styles.label}>曜日</label>
+                  <select value={dayOfWeek} onChange={e => setDayOfWeek(Number(e.target.value))} style={styles.input}>
+                    {daysStr.map((d, i) => <option key={i} value={i}>{d}曜</option>)}
+                  </select>
+                </div>
+                <div style={{ width: '135px' }}>
+                  <label style={styles.label}>開始日 (任意)</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={styles.input} />
+                </div>
+                <div style={{ width: '135px' }}>
+                  <label style={styles.label}>終了日 (任意)</label>
+                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={styles.input} />
+                </div>
+              </>
+            ) : (
+              <div style={{ width: '140px' }}>
+                <label style={styles.label}>日付</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={styles.input} />
+              </div>
+            )}
+            <div style={{ width: '120px' }}>
+              <label style={styles.label}>時間</label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={styles.input} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+            <button className="btn-secondary" onClick={resetForm} style={{ padding: '0.25rem 0.75rem' }}><X size={14} /> キャンセル</button>
+            <button className="btn-primary" onClick={handleSave} disabled={!title.trim()} style={{ padding: '0.25rem 0.75rem' }}><Save size={14} /> 保存</button>
+          </div>
+        </div>
+      )}
+
+      {meetings.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {meetings.map(m => (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontWeight: 500 }}>{m.title}</span>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  {m.isRecurring ? `毎週${daysStr[m.dayOfWeek!]}曜${(m.startDate || m.endDate) ? ` (${m.startDate || ''} 〜 ${m.endDate || ''})` : ''}` : m.date} {m.time}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={() => handleEdit(m)} style={{ ...styles.iconBtn, color: 'var(--text-muted)', padding: '0.25rem' }} title="編集"><Edit2 size={16} /></button>
+                <button onClick={() => handleDelete(m.id)} style={{ ...styles.iconBtn, padding: '0.25rem' }} title="削除"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        !isAdding && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>打ち合わせは登録されていません。</div>
+      )}
+    </div>
+  );
+}

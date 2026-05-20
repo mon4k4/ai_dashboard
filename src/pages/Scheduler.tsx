@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { CalendarDays, FolderKanban, GripVertical } from 'lucide-react';
+import { CalendarDays, FolderKanban, GripVertical, Users, Layers } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -13,6 +13,13 @@ const DAY_WIDTH = 40; // 1日のピクセル幅
 export default function Scheduler() {
   const { tasks, projects, updateTask, reorderTasks } = useAppContext();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [tooltipState, setTooltipState] = useState<{
+    x: number;
+    y: number;
+    meetingsOnDate: any[];
+    isOverlap: boolean;
+    overlappingOthers: any[];
+  } | null>(null);
 
   // ドラッグ操作の状態
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
@@ -66,6 +73,36 @@ export default function Scheduler() {
     return list;
   }, [minDate, maxDate]);
 
+  // 全プロジェクトのミーティングを日付ごとに集計 (重複チェック用)
+  const allMeetingsByDate = useMemo(() => {
+    const map = new Map<string, Array<{id: string, time?: string, title: string, projectName: string}>>();
+    projects.forEach(p => {
+      if (!p.meetings) return;
+      p.meetings.forEach(m => {
+        const dates: string[] = [];
+        if (m.isRecurring && m.dayOfWeek !== undefined) {
+          let cur = m.startDate && m.startDate > minDate ? m.startDate : minDate;
+          const end = m.endDate && m.endDate < maxDate ? m.endDate : maxDate;
+          while (cur <= end) {
+            if (new Date(cur).getDay() === m.dayOfWeek) {
+              dates.push(cur);
+            }
+            cur = addDays(cur, 1);
+          }
+        } else if (!m.isRecurring && m.date) {
+          if (m.date >= minDate && m.date <= maxDate) {
+            dates.push(m.date);
+          }
+        }
+        dates.forEach(d => {
+          if (!map.has(d)) map.set(d, []);
+          map.get(d)!.push({ id: m.id, time: m.time, title: m.title, projectName: p.name });
+        });
+      });
+    });
+    return map;
+  }, [projects, minDate, maxDate]);
+
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
   const myName = localStorage.getItem('myName') || '';
@@ -111,7 +148,7 @@ export default function Scheduler() {
       });
     }
 
-    return groups.filter(g => g.tasks.length > 0);
+    return groups;
   }, [tasks, projects, showOnlyMine, hideCompleted, myName]);
 
   // WBSドラッグ＆ドロップハンドラ
@@ -382,6 +419,7 @@ export default function Scheduler() {
             {groupedTasks.map(group => (
               <div key={`timeline-group-${group.projectId || 'unassigned'}`}>
                 <div style={{ height: '36px', position: 'relative', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
+                  {/* プロジェクト期間バー */}
                   {group.project && group.project.startDate && group.project.endDate && (() => {
                     const offsetDays = diffDays(minDate, group.project.startDate);
                     const durationDays = diffDays(group.project.startDate, group.project.endDate) + 1;
@@ -398,6 +436,116 @@ export default function Scheduler() {
                         pointerEvents: 'none'
                       }} />
                     );
+                  })()}
+
+                  {/* 打ち合わせ（ミーティング）の描画 */}
+                  {group.project && group.project.meetings && (() => {
+                    // プロジェクト内のミーティングを日付ごとにグループ化
+                    const projectMeetingsByDate = new Map<string, any[]>();
+                    group.project.meetings.forEach(m => {
+                      const dates: string[] = [];
+                      if (m.isRecurring && m.dayOfWeek !== undefined) {
+                        let cur = m.startDate && m.startDate > minDate ? m.startDate : minDate;
+                        const end = m.endDate && m.endDate < maxDate ? m.endDate : maxDate;
+                        while (cur <= end) {
+                          if (new Date(cur).getDay() === m.dayOfWeek) {
+                            dates.push(cur);
+                          }
+                          cur = addDays(cur, 1);
+                        }
+                      } else if (!m.isRecurring && m.date) {
+                        if (m.date >= minDate && m.date <= maxDate) {
+                          dates.push(m.date);
+                        }
+                      }
+                      dates.forEach(d => {
+                        if (!projectMeetingsByDate.has(d)) projectMeetingsByDate.set(d, []);
+                        projectMeetingsByDate.get(d)!.push(m);
+                      });
+                    });
+
+                    return Array.from(projectMeetingsByDate.entries()).map(([d, meetingsOnDate]) => {
+                      const offsetDays = diffDays(minDate, d);
+                      
+                      // 時間の重複チェック（同日内で、他プロジェクト含めた全ミーティングと照合）
+                      const dateAllMeetings = allMeetingsByDate.get(d) || [];
+                      const timeToMin = (t?: string) => {
+                        if (!t) return -1;
+                        const [h, min] = t.split(':').map(Number);
+                        return h * 60 + min;
+                      };
+
+                      let isOverlap = false;
+                      const overlappingOthers: any[] = [];
+                      for (const m of meetingsOnDate) {
+                        const mTime = timeToMin(m.time);
+                        for (const other of dateAllMeetings) {
+                          if (meetingsOnDate.some(mod => mod.id === other.id)) continue; // 自プロジェクトのグループに含まれているものは除外
+                          const oTime = timeToMin(other.time);
+                          let overlapWithOther = false;
+                          if (mTime === -1 || oTime === -1) {
+                            overlapWithOther = true;
+                          } else if (Math.abs(mTime - oTime) < 60) {
+                            overlapWithOther = true;
+                          }
+                          
+                          if (overlapWithOther) {
+                            isOverlap = true;
+                            if (!overlappingOthers.some(o => o.id === other.id)) {
+                              overlappingOthers.push(other);
+                            }
+                          }
+                        }
+                      }
+                      
+                      // 自プロジェクト内での重複チェック（複数ミーティングがある場合）
+                      if (meetingsOnDate.length > 1) {
+                         // 同日内に複数ある時点で、視覚的には重なるのでエラー扱いとするか、時間の被りを見るか
+                         // 簡易的に同一グループ内に複数あれば重複アイコンとする
+                         isOverlap = true;
+                      }
+
+                      const hoverKey = `proj-${group.project.id}-date-${d}`;
+                      const isHovered = tooltipState?.meetingsOnDate === meetingsOnDate;
+
+                      return (
+                        <div 
+                          key={hoverKey} 
+                          onMouseEnter={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setTooltipState({
+                              x: rect.left + rect.width / 2,
+                              y: rect.top,
+                              meetingsOnDate,
+                              isOverlap,
+                              overlappingOthers
+                            });
+                          }}
+                          onMouseLeave={() => setTooltipState(null)}
+                          style={{
+                            position: 'absolute',
+                            left: `${(offsetDays * DAY_WIDTH) + (DAY_WIDTH / 2) - 10}px`,
+                            top: '8px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            background: isOverlap ? '#ef4444' : 'var(--bg-main)',
+                            border: `2px solid ${isOverlap ? '#ef4444' : group.color}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: isHovered ? 50 : 5,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {isOverlap ? (
+                            <Layers size={12} color="white" />
+                          ) : (
+                            <Users size={12} color={group.color} />
+                          )}
+                        </div>
+                      );
+                    });
                   })()}
                 </div>
                 {group.tasks.map(task => {
@@ -468,11 +616,77 @@ export default function Scheduler() {
             ))}
           </div>
         </div>
+        </div>
       </div>
-    </div>
 
       {editingTaskId && (
-        <TaskEditModal taskId={editingTaskId} onClose={() => setEditingTaskId(null)} />
+        <TaskEditModal
+          taskId={editingTaskId}
+          onClose={() => setEditingTaskId(null)}
+        />
+      )}
+      
+      {/* ツールチップ用のPortal */}
+      {tooltipState && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: `${tooltipState.y - 6}px`,
+          left: `${tooltipState.x}px`,
+          transform: 'translate(-50%, -100%)',
+          background: 'var(--bg-card)',
+          color: 'var(--text-primary)',
+          padding: '0.5rem',
+          borderRadius: '4px',
+          fontSize: '0.75rem',
+          whiteSpace: 'nowrap',
+          border: `1px solid ${tooltipState.isOverlap ? '#ef4444' : 'var(--border-color)'}`,
+          boxShadow: 'var(--shadow-md)',
+          zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
+          pointerEvents: 'none',
+          minWidth: 'max-content'
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            {tooltipState.meetingsOnDate.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontWeight: 'bold' }}>{m.title}</span>
+                {m.time && <span style={{ color: 'var(--text-secondary)' }}>{m.time}</span>}
+              </div>
+            ))}
+          </div>
+          {tooltipState.isOverlap && (
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+              <div style={{ color: '#ef4444', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                ⚠️ {tooltipState.overlappingOthers.length > 0 ? '以下の予定と重複しています' : '時間が重複している予定があります'}
+              </div>
+              {tooltipState.overlappingOthers.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  {tooltipState.overlappingOthers.map(other => (
+                    <div key={other.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>[{other.projectName}]</span>
+                      <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>{other.title}</span>
+                      {other.time && <span style={{ color: 'var(--text-muted)' }}>{other.time}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* 吹き出しの三角 */}
+          <div style={{
+            position: 'absolute',
+            bottom: '-5px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            borderLeft: '5px solid transparent',
+            borderRight: '5px solid transparent',
+            borderTop: `5px solid ${tooltipState.isOverlap ? '#ef4444' : 'var(--bg-card)'}`
+          }} />
+        </div>,
+        document.body
       )}
     </div>
   );

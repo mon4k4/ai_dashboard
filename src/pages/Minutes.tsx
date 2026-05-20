@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
 export default function Minutes() {
-  const { minutes, addMinute, batchStatus, pendingMembers, clearPendingMembers, addMember, members, addPendingMembers } = useAppContext();
+  const { minutes, addMinute, batchStatus, members, addPendingMembers } = useAppContext();
   const [transcript, setTranscript] = useState('');
   const [title, setTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -100,44 +100,6 @@ export default function Minutes() {
         </div>
       )}
 
-      {pendingMembers && pendingMembers.map(group => (
-        <div 
-          key={group.minuteTitle}
-          style={{ 
-            padding: '1rem', 
-            background: 'rgba(99, 102, 241, 0.08)', 
-            borderRadius: 'var(--radius-md)', 
-            border: '1px solid var(--accent-primary)', 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            gap: '1rem',
-            marginBottom: '1rem'
-          }}
-        >
-          <div>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--accent-primary)', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>🧑‍🤝‍🧑 新しいメンバーが検出されました</span>
-              <span style={{ fontSize: '0.8rem', background: 'var(--accent-primary)', color: 'var(--bg-main)', padding: '0.1rem 0.5rem', borderRadius: '4px', fontWeight: 'normal' }}>
-                会議: {group.minuteTitle}
-              </span>
-            </h4>
-            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-              議事録から以下の名前が検出されました：<strong>{group.names.join('、')}</strong><br />
-              チームメンバーとして追加しますか？
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-            <button className="btn-secondary" onClick={() => clearPendingMembers(group.minuteTitle)} style={{ padding: '0.5rem 1rem' }}>スキップ</button>
-            <button className="btn-primary" onClick={() => {
-              group.names.forEach((name, idx) => {
-                addMember({ id: `mem-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`, name, group: '未分類' });
-              });
-              clearPendingMembers(group.minuteTitle);
-            }} style={{ padding: '0.5rem 1rem' }}>追加する</button>
-          </div>
-        </div>
-      ))}
 
       {/* 議事録追加フォーム */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: isFormExpanded ? '1rem' : '0', transition: 'all 0.3s ease' }}>

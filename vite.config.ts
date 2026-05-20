@@ -36,6 +36,55 @@ function parseThinking(text) {
   return { thinking: '', output: text };
 }
 
+// ====== VTTパーサー ======
+function parseVttToPlainText(vttContent) {
+  const lines = vttContent.split('\n');
+  const entries = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    // タイムスタンプ行を検出 (例: 00:37:58.016 --> 00:37:59.088)
+    const timeMatch = line.match(/^(\d{2}:\d{2}:\d{2}\.\d+)\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d+)/);
+    if (timeMatch) {
+      const startTime = timeMatch[1].substring(0, 8); // HH:MM:SS
+      // 次の行がテキスト
+      i++;
+      const textLines = [];
+      while (i < lines.length && lines[i].trim() !== '') {
+        textLines.push(lines[i].trim());
+        i++;
+      }
+      const rawText = textLines.join(' ');
+      // <v Name>text</v> 形式のパース
+      const speakerMatch = rawText.match(/^<v\s+([^>]+)>(.+)<\/v>$/);
+      if (speakerMatch) {
+        const speakerFull = speakerMatch[1].trim();
+        const text = speakerMatch[2].trim();
+        entries.push(`[${startTime}] ${speakerFull}: ${text}`);
+      } else {
+        // 話者タグなしの場合
+        entries.push(`[${startTime}] ${rawText}`);
+      }
+    }
+    i++;
+  }
+  return entries.join('\n');
+}
+
+// ====== VTTからメンバー名を抽出 ======
+function extractMembersFromVtt(vttContent) {
+  const names = new Set();
+  const regex = /<v\s+([^>]+)>/g;
+  let match;
+  while ((match = regex.exec(vttContent)) !== null) {
+    const fullName = match[1].trim();
+    if (fullName && fullName.length < 50) {
+      names.add(fullName);
+    }
+  }
+  return names;
+}
+
 // デバッグ用ログファイル
 const debugLogPath = path.join(process.cwd(), 'debug.log');
 function debugLog(msg) {
@@ -167,28 +216,38 @@ function getUnprocessedItems(dirPath, includeProcessed = false) {
         if (!includeProcessed && entry.name.includes('_処理済み')) continue;
         
         const subFiles = fs.readdirSync(fullPath);
-        const txtFile = subFiles.find(sf => sf.endsWith('.txt'));
-        if (txtFile) {
-          const txtFilePath = path.join(fullPath, txtFile);
-          const content = fs.readFileSync(txtFilePath, 'utf-8');
+        // .txt または .vtt ファイルを探す
+        const targetFile = subFiles.find(sf => sf.endsWith('.txt')) || subFiles.find(sf => sf.endsWith('.vtt'));
+        if (targetFile) {
+          const targetFilePath = path.join(fullPath, targetFile);
+          const rawContent = fs.readFileSync(targetFilePath, 'utf-8');
+          const isVtt = targetFile.endsWith('.vtt');
+          const content = isVtt ? parseVttToPlainText(rawContent) : rawContent;
           items.push({
             filename: entry.name,
             fullPath: fullPath,
             content: content,
+            rawContent: isVtt ? rawContent : undefined,
             isFolder: true,
-            txtFilePath: txtFilePath
+            isVtt: isVtt,
+            txtFilePath: targetFilePath
           });
         }
       } 
-      // 2. フラットファイルの場合
+      // 2. フラットファイルの場合（.txt + .vtt 対応）
       else if (entry.isFile()) {
-        if (entry.name.endsWith('.txt') && (includeProcessed || !entry.name.includes('_処理済み'))) {
-          const content = fs.readFileSync(fullPath, 'utf-8');
+        const isTarget = (entry.name.endsWith('.txt') || entry.name.endsWith('.vtt')) && (includeProcessed || !entry.name.includes('_処理済み'));
+        if (isTarget) {
+          const rawContent = fs.readFileSync(fullPath, 'utf-8');
+          const isVtt = entry.name.endsWith('.vtt');
+          const content = isVtt ? parseVttToPlainText(rawContent) : rawContent;
           items.push({
             filename: entry.name,
             fullPath: fullPath,
             content: content,
-            isFolder: false
+            rawContent: isVtt ? rawContent : undefined,
+            isFolder: false,
+            isVtt: isVtt
           });
         }
       }
@@ -216,7 +275,7 @@ async function processFile(file, llmEndpoint) {
   const tasks = parsed.map(t => ({ ...t, id: genId('task'), status: 'todo', isNew: true }));
   
   let extractedDate = new Date().toISOString().split('T')[0];
-  let title = file.filename.replace('.txt', '');
+  let title = file.filename.replace('.txt', '').replace('.vtt', '');
   
   if (file.isFolder) {
     // フォルダ名から日時とタイトルをパース (例: 2026-04-05 16.41.24 title)
@@ -243,9 +302,19 @@ async function processFile(file, llmEndpoint) {
   broadcast('minute_created', minute);
 
   // ====== メンバ自動抽出 ======
+  const extractedNames = new Set();
+  
+  // VTTファイルの場合は <v Name> タグから直接抽出
+  if (file.isVtt && file.rawContent) {
+    const vttNames = extractMembersFromVtt(file.rawContent);
+    for (const name of vttNames) {
+      extractedNames.add(name);
+    }
+  }
+  
+  // 通常のテキスト形式の正規表現でも抽出
   const regex1 = /\[([^\]\n]{1,15})\]\s*\d{2}:\d{2}/g;
   const regex2 = /(?:^|\n)(?:\[?\d{2}:\d{2}(?::\d{2})?\]?\s*)?([^\[\]:：\n]{1,15})[=:：]/g;
-  const extractedNames = new Set();
   [regex1, regex2].forEach(regex => {
     let match;
     while ((match = regex.exec(file.content)) !== null) {

@@ -27,6 +27,18 @@ export interface Project {
   orderName: string;
   color: string;
   workload: Record<string, number>; // e.g. { "2026-05": 160 }
+  meetings?: ProjectMeeting[];
+}
+
+export interface ProjectMeeting {
+  id: string;
+  title: string;
+  isRecurring: boolean;
+  date?: string; // YYYY-MM-DD for single
+  startDate?: string; // YYYY-MM-DD for recurring
+  endDate?: string; // YYYY-MM-DD for recurring
+  dayOfWeek?: number; // 0-6 for recurring
+  time?: string; // e.g. "14:00"
 }
 
 export interface TeamMember {
