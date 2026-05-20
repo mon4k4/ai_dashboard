@@ -71,6 +71,15 @@ function parseVttToPlainText(vttContent) {
   return entries.join('\n');
 }
 
+// ====== 括弧内の名前を抽出 ======
+function resolveParenthesizedName(name) {
+  const match = name.match(/[(（]([^)）]+)[)）]/);
+  if (match) {
+    return match[1].trim();
+  }
+  return name.trim();
+}
+
 // ====== VTTからメンバー名を抽出 ======
 function extractMembersFromVtt(vttContent) {
   const names = new Set();
@@ -78,8 +87,11 @@ function extractMembersFromVtt(vttContent) {
   let match;
   while ((match = regex.exec(vttContent)) !== null) {
     const fullName = match[1].trim();
-    if (fullName && fullName.length < 50) {
-      names.add(fullName);
+    if (fullName && fullName.length < 100) {
+      const resolvedName = resolveParenthesizedName(fullName);
+      if (resolvedName) {
+        names.add(resolvedName);
+      }
     }
   }
   return names;
@@ -313,14 +325,15 @@ async function processFile(file, llmEndpoint) {
   }
   
   // 通常のテキスト形式の正規表現でも抽出
-  const regex1 = /\[([^\]\n]{1,15})\]\s*\d{2}:\d{2}/g;
-  const regex2 = /(?:^|\n)(?:\[?\d{2}:\d{2}(?::\d{2})?\]?\s*)?([^\[\]:：\n]{1,15})[=:：]/g;
+  const regex1 = /\[([^\]\n]{1,50})\]\s*\d{2}:\d{2}/g;
+  const regex2 = /(?:^|\n)(?:\[?\d{2}:\d{2}(?::\d{2})?\]?\s*)?([^\[\]:：\n]{1,50})[=:：]/g;
   [regex1, regex2].forEach(regex => {
     let match;
     while ((match = regex.exec(file.content)) !== null) {
       const name = match[1].trim();
-      if (name && name.length < 15 && !name.includes('http') && !['ID', 'URL', 'Time'].includes(name) && !name.startsWith('**')) {
-        extractedNames.add(name);
+      const resolvedName = resolveParenthesizedName(name);
+      if (resolvedName && resolvedName.length < 15 && !resolvedName.includes('http') && !['ID', 'URL', 'Time'].includes(resolvedName) && !resolvedName.startsWith('**')) {
+        extractedNames.add(resolvedName);
       }
     }
   });
