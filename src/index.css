@@ -34,6 +34,72 @@
   --font-display: 'Outfit', sans-serif;
 }
 
+:root.ua-windows {
+  /* Windows用コントラスト調整：背景をより深い黒に調整し、明暗差を強化 */
+  --bg-main: #090a0f;
+  
+  /* カードとサイドバーの透過度を下げ、背景グラデーションとの混ざりを減らし可読性を向上 */
+  --bg-sidebar: rgba(18, 20, 27, 0.85);
+  --bg-card: rgba(22, 25, 34, 0.85);
+  --bg-card-hover: rgba(32, 36, 48, 0.9);
+  --bg-glass: rgba(255, 255, 255, 0.04);
+
+  /* Windowsブラウザにおけるテキストの視認性を高めるため、中間色・低輝度の文字を明るく補正 */
+  --text-primary: #ffffff;
+  --text-secondary: #cbd5e1; /* Slate-300 (元は Slate-400) */
+  --text-muted: #94a3b8;     /* Slate-400 (元は Slate-500) */
+
+  /* 境界線の不透明度を高めて輪郭を際立たせる */
+  --border-color: rgba(255, 255, 255, 0.16);
+  --border-focus: rgba(99, 102, 241, 0.7);
+
+  /* シャドウの明度差を大きくして立体感を強化 */
+  --shadow-glass: 0 4px 30px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Windowsにおけるフォント表示のレンダリング補正 */
+.ua-windows body {
+  /* サブピクセル・アンチエイリアシングを有効にして細見えを防止 */
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  font-weight: 450;
+}
+
+.ua-windows h1, 
+.ua-windows h2, 
+.ua-windows h3, 
+.ua-windows h4, 
+.ua-windows h5, 
+.ua-windows h6 {
+  font-weight: 600;
+}
+
+/* Windowsでのテキストのかすれ防止のため、ごく微細なシャドウ効果を適用 */
+.ua-windows p, 
+.ua-windows span, 
+.ua-windows div, 
+.ua-windows label, 
+.ua-windows button, 
+.ua-windows select, 
+.ua-windows input, 
+.ua-windows textarea {
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* セカンダリボタンの視認性をアップ */
+.ua-windows .btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* スクロールバーの輝度を調整し、スクロール領域の認知を高める */
+.ua-windows ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+.ua-windows ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

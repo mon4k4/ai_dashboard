@@ -1,14 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { LayoutDashboard, CalendarDays, FileText, FileBarChart, Settings, Bell, Check, FolderKanban, Users, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import LLMLogViewer from './LLMLogViewer';
 
 export default function Layout() {
-  const { tasks, projects, members, commitTask, updateTask } = useAppContext();
+  const { tasks, projects, members, commitTask, updateTask, settings } = useAppContext();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   
+  // OSおよびコントラストモードの自動調整エフェクト
+  useEffect(() => {
+    const isWindows = typeof window !== 'undefined' && /Win/i.test(navigator.userAgent || navigator.platform);
+    const mode = settings.colorContrastMode || 'auto';
+    const shouldOptimize = mode === 'win' || (mode === 'auto' && isWindows);
+    
+    if (shouldOptimize) {
+      document.documentElement.classList.add('ua-windows');
+    } else {
+      document.documentElement.classList.remove('ua-windows');
+    }
+  }, [settings.colorContrastMode]);
+
   const newTasks = tasks.filter(t => t.isNew);
 
   const navItems = [

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Server, Folder, FileText, User, Clock } from 'lucide-react';
+import { Save, Server, Folder, FileText, User, Clock, Palette } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 export default function Settings() {
@@ -11,6 +11,7 @@ export default function Settings() {
   const [reportTemplatePath, setReportTemplatePath] = useState('');
   const [myName, setMyName] = useState('');
   const [monthlyWorkload, setMonthlyWorkload] = useState('155');
+  const [colorContrastMode, setColorContrastMode] = useState('auto');
   const [saved, setSaved] = useState(false);
 
   // Load from AppContext settings state
@@ -22,6 +23,7 @@ export default function Settings() {
     if (settings.reportTemplatePath) setReportTemplatePath(settings.reportTemplatePath);
     if (settings.myName) setMyName(settings.myName);
     if (settings.monthlyWorkload) setMonthlyWorkload(settings.monthlyWorkload);
+    if (settings.colorContrastMode) setColorContrastMode(settings.colorContrastMode);
   }, [settings]);
 
   const handleSave = () => {
@@ -32,7 +34,8 @@ export default function Settings() {
       minutesDir,
       reportTemplatePath,
       myName,
-      monthlyWorkload
+      monthlyWorkload,
+      colorContrastMode
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -147,6 +150,23 @@ export default function Settings() {
             style={styles.input}
           />
           <p style={styles.helpText}>プロジェクト管理の稼働率計算に使用します。（デフォルト: 155時間）</p>
+        </div>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            <Palette size={18} />
+            画面コントラスト調整（Windows最適化）
+          </label>
+          <select 
+            value={colorContrastMode}
+            onChange={(e) => setColorContrastMode(e.target.value)}
+            style={styles.input}
+          >
+            <option value="auto">自動（OSを判別して最適化）</option>
+            <option value="mac">macOS向け（標準・高品質グラスマフィズム）</option>
+            <option value="win">Windows向け（高輝度・くっきり表示）</option>
+          </select>
+          <p style={styles.helpText}>macOSとWindowsでの描画・フォントのかすれ特性の違いを調整します。「Windows向け」にするとテキストや境界線が明るく際立つようになります。</p>
         </div>
 
         <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
