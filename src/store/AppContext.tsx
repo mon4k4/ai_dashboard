@@ -14,6 +14,7 @@ export interface LlmLog {
   error?: string;
   status?: 'streaming' | 'complete' | 'error';
   label?: string;
+  statusCode?: number;
 }
 
 interface BatchStatus {

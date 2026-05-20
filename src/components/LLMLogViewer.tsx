@@ -3,12 +3,14 @@ import { useAppContext } from '../store/AppContext';
 import { Terminal, ChevronDown, ChevronRight, X, Clock, AlertTriangle, BrainCircuit, Radio } from 'lucide-react';
 
 export default function LLMLogViewer() {
-  const { llmLogs } = useAppContext();
+  const { llmLogs, settings } = useAppContext();
   const [isOpen, setIsOpen] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const streamingRef = useRef<HTMLPreElement | null>(null);
 
   const streamingCount = llmLogs.filter(l => l.status === 'streaming').length;
+  const isStreamingMode = settings.llmStreaming !== 'false';
+  const logTitle = isStreamingMode ? 'LLM Logs (Streaming)' : 'LLM Logs (Status Mode)';
 
   // ストリーミング中のログを自動展開
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function LLMLogViewer() {
       <div style={styles.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Terminal size={20} color="var(--accent-primary)" />
-          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>LLM Logs (Verbose)</h3>
+          <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{logTitle}</h3>
           {streamingCount > 0 && (
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#f59e0b', fontSize: '0.8rem' }}>
               <Radio size={14} style={{ animation: 'pulse 1.5s infinite' }} /> Streaming...
@@ -71,7 +73,21 @@ export default function LLMLogViewer() {
                       {isStreaming ? (
                         <span style={{ color: '#f59e0b' }}>処理中...</span>
                       ) : (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Clock size={12} /> {(log.latencyMs / 60000).toFixed(2)}分</span>
+                        <>
+                          {log.statusCode !== undefined && (
+                            <span style={{
+                              background: log.statusCode >= 200 && log.statusCode < 300 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                              color: log.statusCode >= 200 && log.statusCode < 300 ? 'var(--status-done)' : '#ef4444',
+                              padding: '0.1rem 0.45rem',
+                              borderRadius: '4px',
+                              fontWeight: 600,
+                              fontSize: '0.75rem'
+                            }}>
+                              {log.statusCode}
+                            </span>
+                          )}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Clock size={12} /> {(log.latencyMs / 60000).toFixed(2)}分</span>
+                        </>
                       )}
                       <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
                     </div>

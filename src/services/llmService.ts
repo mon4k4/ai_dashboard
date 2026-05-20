@@ -72,15 +72,20 @@ const getEndpoint = () => {
   return localStorage.getItem('llmEndpoint') || 'http://localhost:8080/v1';
 };
 
+const isStreamingEnabled = () => {
+  return localStorage.getItem('llmStreaming') !== 'false';
+};
+
 /**
  * バックエンドにバッチ処理を開始させる（バックエンド主導・リロード耐性あり）
  */
 export async function startBatchProcess(dir: string): Promise<void> {
   const llmEndpoint = getEndpoint();
+  const stream = isStreamingEnabled();
   const res = await fetch('/api/batch/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dir, llmEndpoint })
+    body: JSON.stringify({ dir, llmEndpoint, stream })
   });
   if (!res.ok) {
     const data = await res.json();
@@ -136,6 +141,7 @@ const parseThinkingResponse = (rawContent: string) => {
 export async function extractTasksFromTranscript(transcript: string): Promise<TaskExtractResult[]> {
   const prompt = buildTaskExtractionPrompt(transcript);
   const llmEndpoint = getEndpoint();
+  const stream = isStreamingEnabled();
 
   const response = await fetch('/api/llm/call', {
     method: 'POST',
@@ -148,6 +154,7 @@ export async function extractTasksFromTranscript(transcript: string): Promise<Ta
       label: 'タスク抽出（手動）',
       temperature: 0.1,
       llmEndpoint,
+      stream,
     })
   });
 
@@ -165,6 +172,7 @@ export async function extractTasksFromTranscript(transcript: string): Promise<Ta
 export async function summarizeMeeting(transcript: string): Promise<string> {
   const prompt = buildSummaryPrompt(transcript);
   const llmEndpoint = getEndpoint();
+  const stream = isStreamingEnabled();
 
   const response = await fetch('/api/llm/call', {
     method: 'POST',
@@ -174,6 +182,7 @@ export async function summarizeMeeting(transcript: string): Promise<string> {
       label: '議事録要約（手動）',
       temperature: 0.3,
       llmEndpoint,
+      stream,
     })
   });
 
@@ -191,6 +200,7 @@ export async function generateWeeklyReport(minutes: MinuteSummary[], templateTex
   const minutesText = minutes.map(m => `■${m.date} ${m.title}\n${m.summary}`).join('\n\n');
   const prompt = buildWeeklyReportPrompt(minutesText, templateText);
   const llmEndpoint = getEndpoint();
+  const stream = isStreamingEnabled();
 
   const response = await fetch('/api/llm/call', {
     method: 'POST',
@@ -200,6 +210,7 @@ export async function generateWeeklyReport(minutes: MinuteSummary[], templateTex
       label: '週報生成',
       temperature: 0.3,
       llmEndpoint,
+      stream,
     })
   });
 
@@ -227,6 +238,7 @@ export async function generateProjectStatus(project: Project, minutes: MinuteSum
 
   const prompt = buildProjectStatusPrompt(project.name, project.summary, minutesText, tasksText);
   const llmEndpoint = getEndpoint();
+  const stream = isStreamingEnabled();
 
   const response = await fetch('/api/llm/call', {
     method: 'POST',
@@ -236,6 +248,7 @@ export async function generateProjectStatus(project: Project, minutes: MinuteSum
       label: `PJ状況生成:${project.name}`,
       temperature: 0.3,
       llmEndpoint,
+      stream,
     })
   });
 

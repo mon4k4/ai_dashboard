@@ -5,6 +5,7 @@ import { useAppContext } from '../store/AppContext';
 export default function Settings() {
   const { members, settings, saveSettings } = useAppContext();
   const [llmEndpoint, setLlmEndpoint] = useState('http://localhost:8080/v1');
+  const [llmStreaming, setLlmStreaming] = useState(true);
   const [imageDir, setImageDir] = useState('/Users/monaka/Pictures/Screenshots');
   const [minutesDir, setMinutesDir] = useState('./議事録一覧');
   const [reportTemplatePath, setReportTemplatePath] = useState('');
@@ -15,6 +16,7 @@ export default function Settings() {
   // Load from AppContext settings state
   useEffect(() => {
     if (settings.llmEndpoint) setLlmEndpoint(settings.llmEndpoint);
+    setLlmStreaming(settings.llmStreaming !== 'false');
     if (settings.imageDir) setImageDir(settings.imageDir);
     if (settings.minutesDir) setMinutesDir(settings.minutesDir);
     if (settings.reportTemplatePath) setReportTemplatePath(settings.reportTemplatePath);
@@ -25,6 +27,7 @@ export default function Settings() {
   const handleSave = () => {
     saveSettings({
       llmEndpoint,
+      llmStreaming: String(llmStreaming),
       imageDir,
       minutesDir,
       reportTemplatePath,
@@ -54,6 +57,19 @@ export default function Settings() {
             style={styles.input}
           />
           <p style={styles.helpText}>llama.cpp などの OpenAI 互換サーバーのベースURLを指定してください。</p>
+        </div>
+
+        <div style={styles.formGroup}>
+          <label style={{ ...styles.label, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <input 
+              type="checkbox" 
+              checked={llmStreaming}
+              onChange={(e) => setLlmStreaming(e.target.checked)}
+              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-primary)' }}
+            />
+            LLMのストリーミング出力を有効にする
+          </label>
+          <p style={styles.helpText}>有効にするとLLMの応答と思考ログをリアルタイムに描画します。無効にすると一括で取得します。</p>
         </div>
 
         <div style={styles.formGroup}>

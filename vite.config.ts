@@ -104,7 +104,7 @@ function debugLog(msg) {
 }
 
 // ====== LLM 呼び出し (ストリーミング + 非ストリーミングフォールバック) ======
-async function callLlm(endpoint, messages, label, temp = 0.3) {
+async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = true) {
   const logId = genId('log');
   const startTime = Date.now();
   const log = {
@@ -113,84 +113,104 @@ async function callLlm(endpoint, messages, label, temp = 0.3) {
     prompt: messages.find(m => m.role === 'user')?.content || '',
     responseParams: { messages: messages.map(m => ({ role: m.role, content: m.content.substring(0, 200) + '...' })), temperature: temp },
     thinkingProcess: '', finalOutput: '', latencyMs: 0, status: 'streaming', label,
+    statusCode: undefined
   };
   state.logs.push(log);
   broadcast('log_created', log);
-  debugLog(`[callLlm] START label=${label} logId=${logId} endpoint=${endpoint}`);
+  debugLog(`[callLlm] START label=${label} logId=${logId} endpoint=${endpoint} streamOption=${streamOption}`);
   debugLog(`[callLlm] SSE clients count: ${state.sseClients.size}`);
 
   let thinkingFull = '';
   let outputFull = '';
+  let statusCode = undefined;
   try {
     const fetchUrl = `${endpoint}/chat/completions`;
-    debugLog(`[callLlm] Fetching: ${fetchUrl} stream=true`);
+    
+    if (streamOption) {
+      debugLog(`[callLlm] Fetching: ${fetchUrl} stream=true`);
+      const res = await fetch(fetchUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, temperature: temp, stream: true }),
+      });
+      statusCode = res.status;
+      debugLog(`[callLlm] Response status: ${res.status}`);
+      if (!res.ok) throw new Error(`LLM API error: ${res.status}`);
 
-    const res = await fetch(fetchUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, temperature: temp, stream: true }),
-    });
-    debugLog(`[callLlm] Response status: ${res.status}`);
-    if (!res.ok) throw new Error(`LLM API error: ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      debugLog(`[callLlm] Content-Type: ${contentType}`);
+      debugLog(`[callLlm] res.body exists: ${!!res.body}`);
 
-    const contentType = res.headers.get('content-type') || '';
-    debugLog(`[callLlm] Content-Type: ${contentType}`);
-    debugLog(`[callLlm] res.body exists: ${!!res.body}`);
+      if (res.body) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        let chunkCount = 0;
 
-    if (res.body) {
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-      let chunkCount = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            debugLog(`[callLlm] Stream done. Total chunks: ${chunkCount}, thinking: ${thinkingFull.length}chars, output: ${outputFull.length}chars`);
+            break;
+          }
+          const rawChunkText = dec.decode(value, { stream: true });
+          chunkCount++;
+          buf += rawChunkText;
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const d = line.slice(6).trim();
+            if (d === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(d);
+              const delta = parsed.choices?.[0]?.delta;
+              const reasoningChunk = delta?.reasoning_content || '';
+              const contentChunk = delta?.content || '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          debugLog(`[callLlm] Stream done. Total chunks: ${chunkCount}, thinking: ${thinkingFull.length}chars, output: ${outputFull.length}chars`);
-          break;
+              if (reasoningChunk) {
+                thinkingFull += reasoningChunk;
+                broadcast('log_chunk', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, rawChunk: reasoningChunk });
+              }
+              if (contentChunk) {
+                outputFull += contentChunk;
+                broadcast('log_chunk', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, rawChunk: contentChunk });
+              }
+            } catch (e) { }
+          }
         }
-        const rawChunkText = dec.decode(value, { stream: true });
-        chunkCount++;
-        if (chunkCount <= 5) {
-          debugLog(`[callLlm] Raw chunk #${chunkCount}: ${rawChunkText.substring(0, 300)}`);
-        }
-        buf += rawChunkText;
-        const lines = buf.split('\n');
-        buf = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const d = line.slice(6).trim();
-          if (d === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(d);
-            const delta = parsed.choices?.[0]?.delta;
-            const reasoningChunk = delta?.reasoning_content || '';
-            const contentChunk = delta?.content || '';
-
-            if (reasoningChunk) {
-              thinkingFull += reasoningChunk;
-              broadcast('log_chunk', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, rawChunk: reasoningChunk });
-            }
-            if (contentChunk) {
-              outputFull += contentChunk;
-              broadcast('log_chunk', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, rawChunk: contentChunk });
-            }
-          } catch (e) { }
-        }
+      } else {
+        debugLog('[callLlm] No res.body - cannot stream');
       }
     } else {
-      debugLog('[callLlm] No res.body - cannot stream');
+      // NON-STREAMING mode
+      debugLog(`[callLlm] Fetching: ${fetchUrl} stream=false`);
+      const res = await fetch(fetchUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, temperature: temp, stream: false }),
+      });
+      statusCode = res.status;
+      debugLog(`[callLlm] Response status: ${res.status}`);
+      if (!res.ok) throw new Error(`LLM API error: ${res.status}`);
+
+      const data = await res.json();
+      const rawContent = data.choices?.[0]?.message?.content || '';
+      const { thinking, output } = parseThinking(rawContent);
+      thinkingFull = thinking;
+      outputFull = output;
+      broadcast('log_chunk', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, rawChunk: rawContent });
     }
 
-
-    // ストリーミングで何も取得できなかった場合は非ストリーミングで再試行
-    if (!thinkingFull && !outputFull) {
+    // ストリーミングで何も取得できなかった場合は非ストリーミングで再試行 (ストリーミング指定時のみ)
+    if (streamOption && !thinkingFull && !outputFull) {
       debugLog('[callLlm] No streaming data - retrying without stream');
       const res2 = await fetch(`${endpoint}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp }),
       });
+      statusCode = res2.status;
       if (res2.ok) {
         const data = await res2.json();
         const rawContent = data.choices?.[0]?.message?.content || '';
@@ -202,14 +222,14 @@ async function callLlm(endpoint, messages, label, temp = 0.3) {
     }
 
     const latencyMs = Date.now() - startTime;
-    Object.assign(log, { thinkingProcess: thinkingFull, finalOutput: outputFull, latencyMs, status: 'complete' });
-    broadcast('log_complete', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, latencyMs });
-    debugLog(`[callLlm] COMPLETE thinking=${thinkingFull.length}chars output=${outputFull.length}chars ${latencyMs}ms`);
+    Object.assign(log, { thinkingProcess: thinkingFull, finalOutput: outputFull, latencyMs, status: 'complete', statusCode });
+    broadcast('log_complete', { id: logId, thinkingProcess: thinkingFull, finalOutput: outputFull, latencyMs, statusCode });
+    debugLog(`[callLlm] COMPLETE thinking=${thinkingFull.length}chars output=${outputFull.length}chars ${latencyMs}ms statusCode=${statusCode}`);
     return { thinking: thinkingFull, output: outputFull, logId };
   } catch (err) {
     const latencyMs = Date.now() - startTime;
-    Object.assign(log, { error: err.message, latencyMs, status: 'error' });
-    broadcast('log_complete', { id: logId, error: err.message, latencyMs });
+    Object.assign(log, { error: err.message, latencyMs, status: 'error', statusCode });
+    broadcast('log_complete', { id: logId, error: err.message, latencyMs, statusCode });
     throw err;
   }
 }
@@ -271,15 +291,15 @@ function getUnprocessedItems(dirPath, includeProcessed = false) {
 }
 
 // ====== ファイル処理 ======
-async function processFile(file, llmEndpoint) {
+async function processFile(file, llmEndpoint, streamOption = true) {
   state.currentFile = file.filename;
   broadcast('batch_status', { status: 'processing', currentFile: file.filename, processedCount: state.processedCount, totalCount: state.totalCount });
 
-  const sumResult = await callLlm(llmEndpoint, [{ role: 'user', content: buildSummaryPrompt(file.content) }], `要約: ${file.filename}`, 0.6);
+  const sumResult = await callLlm(llmEndpoint, [{ role: 'user', content: buildSummaryPrompt(file.content) }], `要約: ${file.filename}`, 0.6, streamOption);
   const taskResult = await callLlm(llmEndpoint, [
     { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
     { role: 'user', content: buildTaskExtractionPrompt(file.content) }
-  ], `タスク抽出: ${file.filename}`, 0.6);
+  ], `タスク抽出: ${file.filename}`, 0.6, streamOption);
 
   let parsed = [];
   try { parsed = JSON.parse(taskResult.output.replace(/```json\n?|```/g, '').trim()); } catch (e) { }
@@ -372,7 +392,7 @@ async function processFile(file, llmEndpoint) {
   state.processedCount++;
 }
 
-async function processBatch(dir, llmEndpoint) {
+async function processBatch(dir, llmEndpoint, streamOption = true) {
   if (state.isProcessing) return;
   state.isProcessing = true;
   state.processedCount = 0;
@@ -382,7 +402,7 @@ async function processBatch(dir, llmEndpoint) {
     if (!files.length) { broadcast('batch_status', { status: 'no_files' }); return; }
     broadcast('batch_status', { status: 'started', totalCount: files.length });
     for (const f of files) {
-      try { await processFile(f, llmEndpoint); } catch (e) { broadcast('batch_status', { status: 'file_error', filename: f.filename, error: e.message }); }
+      try { await processFile(f, llmEndpoint, streamOption); } catch (e) { broadcast('batch_status', { status: 'file_error', filename: f.filename, error: e.message }); }
     }
     broadcast('batch_status', { status: 'complete', processedCount: state.processedCount, totalCount: state.totalCount });
   } catch (e) { broadcast('batch_status', { status: 'error', error: e.message }); }
@@ -416,9 +436,9 @@ function backendPlugin() {
         // Start batch
         if (req.url === '/api/batch/start' && req.method === 'POST') {
           try {
-            const { dir, llmEndpoint } = await parseBody(req);
+            const { dir, llmEndpoint, stream } = await parseBody(req);
             if (state.isProcessing) { res.statusCode = 409; res.end(JSON.stringify({ error: 'Already processing' })); return; }
-            processBatch(dir, llmEndpoint || 'http://localhost:8080/v1');
+            processBatch(dir, llmEndpoint || 'http://localhost:8080/v1', stream !== false);
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true }));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
@@ -449,9 +469,9 @@ function backendPlugin() {
         // Generic LLM proxy call (for verbose logging on frontend actions)
         if (req.url === '/api/llm/call' && req.method === 'POST') {
           try {
-            const { messages, label, temperature, llmEndpoint } = await parseBody(req);
+            const { messages, label, temperature, llmEndpoint, stream } = await parseBody(req);
             const endpoint = llmEndpoint || 'http://localhost:8080/v1';
-            const result = await callLlm(endpoint, messages, label || 'AI処理', temperature !== undefined ? temperature : 0.3);
+            const result = await callLlm(endpoint, messages, label || 'AI処理', temperature !== undefined ? temperature : 0.3, stream !== false);
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ output: result.output, thinking: result.thinking }));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
