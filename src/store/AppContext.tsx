@@ -230,10 +230,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateTask = useCallback((id: string, updates: Partial<TaskExtractResult>) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    setMinutes(prevMinutes => prevMinutes.map(m => {
+      const hasTask = m.extractedTasks && m.extractedTasks.some(t => t.id === id);
+      if (hasTask) {
+        return {
+          ...m,
+          extractedTasks: m.extractedTasks.map(t => t.id === id ? { ...t, ...updates } : t)
+        };
+      }
+      return m;
+    }));
   }, []);
 
   const commitTask = useCallback((id: string) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, isNew: false } : t));
+    setMinutes(prevMinutes => prevMinutes.map(m => {
+      const hasTask = m.extractedTasks && m.extractedTasks.some(t => t.id === id);
+      if (hasTask) {
+        return {
+          ...m,
+          extractedTasks: m.extractedTasks.map(t => t.id === id ? { ...t, isNew: false } : t)
+        };
+      }
+      return m;
+    }));
   }, []);
 
   const reorderTasks = useCallback((orderedIds: string[]) => {
@@ -254,7 +274,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateMinute = useCallback((id: string, updates: Partial<MinuteSummary>) => {
-    setMinutes(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+    setMinutes(prev => prev.map(m => {
+      if (m.id === id) {
+        const hasProjectIdUpdate = 'projectId' in updates;
+        
+        const updatedExtractedTasks = hasProjectIdUpdate
+          ? (m.extractedTasks || []).map(t => ({ ...t, projectId: updates.projectId }))
+          : m.extractedTasks;
+        
+        if (hasProjectIdUpdate && m.extractedTasks && m.extractedTasks.length > 0) {
+          const taskIds = new Set(m.extractedTasks.map(t => t.id));
+          setTasks(prevTasks => prevTasks.map(t => taskIds.has(t.id) ? { ...t, projectId: updates.projectId } : t));
+        }
+
+        return { ...m, ...updates, extractedTasks: updatedExtractedTasks };
+      }
+      return m;
+    }));
   }, []);
 
   const addProject = useCallback((project: Project) => {
