@@ -445,6 +445,18 @@ function backendPlugin() {
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
           return;
         }
+
+        // Generic LLM proxy call (for verbose logging on frontend actions)
+        if (req.url === '/api/llm/call' && req.method === 'POST') {
+          try {
+            const { messages, label, temperature, llmEndpoint } = await parseBody(req);
+            const endpoint = llmEndpoint || 'http://localhost:8080/v1';
+            const result = await callLlm(endpoint, messages, label || 'AI処理', temperature !== undefined ? temperature : 0.3);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ output: result.output, thinking: result.thinking }));
+          } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
+          return;
+        }
         
         // Read Arbitrary File
         if (req.url.startsWith('/api/file/read') && req.method === 'GET') {

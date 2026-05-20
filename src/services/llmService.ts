@@ -135,9 +135,9 @@ const parseThinkingResponse = (rawContent: string) => {
  */
 export async function extractTasksFromTranscript(transcript: string): Promise<TaskExtractResult[]> {
   const prompt = buildTaskExtractionPrompt(transcript);
-  const endpoint = `${getEndpoint()}/chat/completions`;
+  const llmEndpoint = getEndpoint();
 
-  const response = await fetch(endpoint, {
+  const response = await fetch('/api/llm/call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -145,13 +145,15 @@ export async function extractTasksFromTranscript(transcript: string): Promise<Ta
         { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
         { role: 'user', content: prompt }
       ],
+      label: 'タスク抽出（手動）',
       temperature: 0.1,
+      llmEndpoint,
     })
   });
 
   if (!response.ok) throw new Error(`LLM API request failed: ${response.status}`);
   const data = await response.json();
-  const rawContent = data.choices[0].message.content;
+  const rawContent = data.output;
   const { finalOutput } = parseThinkingResponse(rawContent);
   const jsonStr = finalOutput.replace(/```json\n?|```/g, '').trim();
   return JSON.parse(jsonStr) as TaskExtractResult[];
@@ -162,20 +164,22 @@ export async function extractTasksFromTranscript(transcript: string): Promise<Ta
  */
 export async function summarizeMeeting(transcript: string): Promise<string> {
   const prompt = buildSummaryPrompt(transcript);
-  const endpoint = `${getEndpoint()}/chat/completions`;
+  const llmEndpoint = getEndpoint();
 
-  const response = await fetch(endpoint, {
+  const response = await fetch('/api/llm/call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],
+      label: '議事録要約（手動）',
       temperature: 0.3,
+      llmEndpoint,
     })
   });
 
   if (!response.ok) throw new Error('LLM API request failed');
   const data = await response.json();
-  const rawContent = data.choices[0].message.content;
+  const rawContent = data.output;
   const { finalOutput } = parseThinkingResponse(rawContent);
   return finalOutput;
 }
@@ -186,20 +190,22 @@ export async function summarizeMeeting(transcript: string): Promise<string> {
 export async function generateWeeklyReport(minutes: MinuteSummary[], templateText?: string): Promise<string> {
   const minutesText = minutes.map(m => `■${m.date} ${m.title}\n${m.summary}`).join('\n\n');
   const prompt = buildWeeklyReportPrompt(minutesText, templateText);
-  const endpoint = `${getEndpoint()}/chat/completions`;
+  const llmEndpoint = getEndpoint();
 
-  const response = await fetch(endpoint, {
+  const response = await fetch('/api/llm/call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],
+      label: '週報生成',
       temperature: 0.3,
+      llmEndpoint,
     })
   });
 
   if (!response.ok) throw new Error('LLM API request failed');
   const data = await response.json();
-  const rawContent = data.choices[0].message.content;
+  const rawContent = data.output;
   const { finalOutput } = parseThinkingResponse(rawContent);
   return finalOutput;
 }
@@ -220,20 +226,22 @@ export async function generateProjectStatus(project: Project, minutes: MinuteSum
   }).join('\n');
 
   const prompt = buildProjectStatusPrompt(project.name, project.summary, minutesText, tasksText);
-  const endpoint = `${getEndpoint()}/chat/completions`;
+  const llmEndpoint = getEndpoint();
 
-  const response = await fetch(endpoint, {
+  const response = await fetch('/api/llm/call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],
+      label: `PJ状況生成:${project.name}`,
       temperature: 0.3,
+      llmEndpoint,
     })
   });
 
   if (!response.ok) throw new Error('LLM API request failed');
   const data = await response.json();
-  const rawContent = data.choices[0].message.content;
+  const rawContent = data.output;
   const { finalOutput } = parseThinkingResponse(rawContent);
   return finalOutput;
 }
