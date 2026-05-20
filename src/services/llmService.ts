@@ -17,6 +17,7 @@ export interface TaskExtractResult {
   isNew?: boolean;
   wbsOrder?: number;
   actionResult?: string; // 対応結果
+  parentId?: string; // 親タスクID
 }
 
 export interface Project {

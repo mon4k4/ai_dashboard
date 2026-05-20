@@ -1,4 +1,5 @@
-import { X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, ArrowRight, CornerDownRight, Trash2 } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 interface TaskEditModalProps {
@@ -7,20 +8,109 @@ interface TaskEditModalProps {
 }
 
 export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
-  const { tasks, projects, members, updateTask } = useAppContext();
+  const { tasks, projects, members, updateTask, addTask, deleteTask } = useAppContext();
+  const [activeTaskId, setActiveTaskId] = useState(taskId);
+
+  useEffect(() => {
+    setActiveTaskId(taskId);
+  }, [taskId]);
   
-  const task = tasks.find(t => t.id === taskId);
+  const task = tasks.find(t => t.id === activeTaskId);
   if (!task) return null;
+
+  const projectTasks = tasks.filter(t => t.projectId === task.projectId);
+
+  // 循環参照を防ぐための親候補フィルタリング
+  const getValidParentOptions = () => {
+    const descendants = new Set<string>();
+    const findDescendants = (pid: string) => {
+      projectTasks.forEach(t => {
+        if (t.parentId === pid) {
+          descendants.add(t.id);
+          findDescendants(t.id);
+        }
+      });
+    };
+    findDescendants(task.id);
+    return projectTasks.filter(t => 
+      t.id !== task.id && 
+      !descendants.has(t.id)
+    );
+  };
+
+  const childTasks = tasks.filter(t => t.parentId === task.id);
+
+  const getStatusColorBg = (status: string) => {
+    switch (status) {
+      case 'todo': return 'rgba(239, 68, 68, 0.1)';
+      case 'in-progress': return 'rgba(59, 130, 246, 0.1)';
+      case 'done': return 'rgba(16, 185, 129, 0.1)';
+      default: return 'rgba(255, 255, 255, 0.1)';
+    }
+  };
+
+  const getStatusColorText = (status: string) => {
+    switch (status) {
+      case 'todo': return '#ef4444';
+      case 'in-progress': return '#3b82f6';
+      case 'done': return '#10b981';
+      default: return 'var(--text-muted)';
+    }
+  };
 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <div style={styles.header}>
           <h3 style={{ margin: 0 }}>タスク詳細編集</h3>
-          <button style={styles.closeBtn} onClick={onClose}><X size={20} /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button 
+              onClick={() => {
+                if (window.confirm('このタスクを削除してもよろしいですか？')) {
+                  deleteTask(task.id);
+                  onClose();
+                }
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#ef4444',
+                cursor: 'pointer',
+                padding: '0.2rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'opacity 0.2s',
+              }}
+              title="タスクを削除"
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              <Trash2 size={18} />
+            </button>
+            <button style={styles.closeBtn} onClick={onClose}><X size={20} /></button>
+          </div>
         </div>
 
         <div style={styles.body}>
+          {/* 親タスクへのパンくず・移動ナビゲーション */}
+          {task.parentId && (() => {
+            const parent = tasks.find(t => t.id === task.parentId);
+            if (!parent) return null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(255,255,255,0.02)', padding: '0.4rem 0.8rem', borderRadius: '4px', borderLeft: '3px solid var(--accent-primary)', marginBottom: '0.25rem' }}>
+                <CornerDownRight size={14} style={{ color: 'var(--accent-primary)' }} />
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>親タスク:</span>
+                <span 
+                  onClick={() => setActiveTaskId(parent.id)}
+                  style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-primary)', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  {parent.title}
+                </span>
+              </div>
+            );
+          })()}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <label style={styles.label}>タスク名</label>
             <input 
@@ -85,6 +175,23 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
             </div>
           </div>
 
+          {/* 親タスクの設定プルダウン */}
+          {task.projectId && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={styles.label}>親タスクの設定</label>
+              <select
+                value={task.parentId || ''}
+                onChange={e => updateTask(task.id, { parentId: e.target.value || undefined })}
+                style={styles.input}
+              >
+                <option value="">-- なし (最上位タスク) --</option>
+                {getValidParentOptions().map(p => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <label style={styles.label}>開始日</label>
@@ -123,6 +230,78 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
               placeholder="対応結果や進捗メモを入力してください..."
               style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
             />
+          </div>
+
+          {/* 子タスク管理セクション */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={styles.label}>子タスク ({childTasks.length}件)</label>
+              <button 
+                className="btn-primary" 
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                onClick={() => {
+                  const newChildId = `task-child-${Date.now()}`;
+                  const newChild = {
+                    id: newChildId,
+                    title: `${task.title} の子タスク`,
+                    status: 'todo' as const,
+                    projectId: task.projectId,
+                    parentId: task.id,
+                    assignee: task.assignee,
+                    memberId: task.memberId,
+                    progress: 0,
+                    isNew: true
+                  };
+                  addTask(newChild);
+                  setActiveTaskId(newChildId);
+                }}
+              >
+                + 子タスクを追加
+              </button>
+            </div>
+            {childTasks.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '0.5rem', borderRadius: '4px' }}>
+                {childTasks.map(c => (
+                  <div 
+                    key={c.id} 
+                    onClick={() => setActiveTaskId(c.id)}
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '0.4rem 0.6rem', 
+                      background: 'rgba(255,255,255,0.03)', 
+                      borderRadius: '4px', 
+                      cursor: 'pointer',
+                      border: '1px solid transparent',
+                      transition: 'background 0.2s, border-color 0.2s'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, marginRight: '0.5rem', color: 'var(--text-primary)' }}>
+                      {c.title}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        padding: '1px 6px', 
+                        borderRadius: '10px', 
+                        background: getStatusColorBg(c.status),
+                        color: getStatusColorText(c.status),
+                        fontWeight: 600
+                      }}>
+                        {c.status === 'todo' ? 'To Do' : c.status === 'in-progress' ? 'In Progress' : 'Done'}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: '35px', textAlign: 'right' }}>
+                        {c.progress || 0}%
+                      </span>
+                      <ArrowRight size={12} style={{ color: 'var(--text-muted)' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>子タスクはありません。</span>
+            )}
           </div>
         </div>
       </div>

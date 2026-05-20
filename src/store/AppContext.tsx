@@ -36,6 +36,7 @@ interface AppState {
   addTask: (task: TaskExtractResult) => void;
   updateTask: (id: string, updates: Partial<TaskExtractResult>) => void;
   commitTask: (id: string) => void;
+  deleteTask: (id: string) => void;
   reorderTasks: (orderedIds: string[]) => void;
   addMinute: (minute: MinuteSummary) => void;
   updateMinute: (id: string, updates: Partial<MinuteSummary>) => void;
@@ -229,6 +230,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTasks(prev => [...prev, task]);
   }, []);
 
+  const deleteTask = useCallback((id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id).map(t => t.parentId === id ? { ...t, parentId: undefined } : t));
+    setMinutes(prevMinutes => prevMinutes.map(m => {
+      const hasTask = m.extractedTasks && m.extractedTasks.some(t => t.id === id);
+      if (hasTask) {
+        return {
+          ...m,
+          extractedTasks: m.extractedTasks.filter(t => t.id !== id)
+        };
+      }
+      return m;
+    }));
+  }, []);
+
   const updateTask = useCallback((id: string, updates: Partial<TaskExtractResult>) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
     setMinutes(prevMinutes => prevMinutes.map(m => {
@@ -363,7 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
-      addTask, updateTask, commitTask, reorderTasks, addMinute, updateMinute,
+      addTask, updateTask, commitTask, deleteTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject,
       addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers, addPendingMembers,
       settings, saveSettings

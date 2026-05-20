@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { Bot, Loader2, Plus } from 'lucide-react';
+import { Bot, Loader2, Plus, CornerDownRight } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { extractTasksFromTranscript } from '../services/llmService';
 import type { TaskExtractResult } from '../services/llmService';
@@ -163,11 +163,70 @@ export default function Kanban() {
                                       {project.name}
                                     </div>
                                   )}
+                                  
+                                  {/* 親タスクバッジ */}
+                                  {(() => {
+                                    const parentTask = tasks.find(t => t.id === task.parentId);
+                                    if (!parentTask) return null;
+                                    return (
+                                      <div 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingTaskId(parentTask.id);
+                                        }}
+                                        style={{
+                                          fontSize: '0.7rem',
+                                          color: 'var(--accent-primary)',
+                                          background: 'rgba(255, 255, 255, 0.05)',
+                                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                                          padding: '0.1rem 0.4rem',
+                                          borderRadius: '4px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem',
+                                          cursor: 'pointer',
+                                          marginTop: '0.25rem',
+                                          width: 'fit-content'
+                                        }}
+                                        title="親タスクを編集"
+                                      >
+                                        <CornerDownRight size={10} />
+                                        {parentTask.title}
+                                      </div>
+                                    );
+                                  })()}
+
                                   {task.actionResult && (
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.03)', padding: '0.25rem 0.5rem', borderRadius: '4px', borderLeft: '2px solid var(--accent-primary)', marginTop: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={task.actionResult}>
                                       <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>対応: </span>{task.actionResult}
                                     </div>
                                   )}
+
+                                  {/* 子タスクの進捗サマリー */}
+                                  {(() => {
+                                    const childTasks = tasks.filter(t => t.parentId === task.id);
+                                    if (childTasks.length === 0) return null;
+                                    const doneCount = childTasks.filter(t => t.status === 'done').length;
+                                    const avgProgress = Math.round(childTasks.reduce((sum, c) => sum + (c.progress || 0), 0) / childTasks.length);
+                                    return (
+                                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                                          <span>子タスク ({doneCount}/{childTasks.length}件)</span>
+                                          <span>{avgProgress}%</span>
+                                        </div>
+                                        <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                                          <div 
+                                            style={{ 
+                                              width: `${avgProgress}%`, 
+                                              height: '100%', 
+                                              background: 'var(--accent-primary)', 
+                                              borderRadius: '2px' 
+                                            }} 
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                   <div style={styles.taskMeta}>
                                     <span style={styles.assignee}>{task.assignee}</span>
                                     {task.progress !== undefined && (

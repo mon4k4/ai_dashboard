@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { CalendarDays, FolderKanban, GripVertical, Users, Layers } from 'lucide-react';
+import { CalendarDays, FolderKanban, GripVertical, Users, Layers, ChevronRight, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import MeetingEditModal from '../components/MeetingEditModal';
@@ -13,12 +13,15 @@ const DAY_WIDTH = 40; // 1日のピクセル幅
 
 export default function Scheduler() {
   const { tasks, projects, updateTask, reorderTasks, updateProject } = useAppContext();
+  const isDraggingRef = useRef(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<{
     projectId: string;
     meetingId: string;
     occurrenceDate: string;
   } | null>(null);
+
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
 
   const [tooltipState, setTooltipState] = useState<{
     x: number;
@@ -125,10 +128,15 @@ export default function Scheduler() {
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
   const myName = localStorage.getItem('myName') || '';
-
-  // プロジェクトごとにタスクをグループ化（wbsOrder順にソート）
+  // プロジェクトごとにタスクをグループ化（階層構造）
   const groupedTasks = useMemo(() => {
-    const groups: { projectId: string | null; projectName: string; color: string; project?: any; tasks: TaskExtractResult[] }[] = [];
+    const groups: { 
+      projectId: string | null; 
+      projectName: string; 
+      color: string; 
+      project?: any; 
+      tasks: (TaskExtractResult & { depth: number; hasChildren: boolean })[] 
+    }[] = [];
     
     let filteredTasks = showOnlyMine && myName
       ? tasks.filter(t => t.assignee === myName)
@@ -138,13 +146,48 @@ export default function Scheduler() {
       filteredTasks = filteredTasks.filter(t => t.status !== 'done');
     }
 
-    const sortTasks = (taskList: TaskExtractResult[]) => {
-      return [...taskList].sort((a, b) => {
+    const buildTreeList = (taskList: TaskExtractResult[]): (TaskExtractResult & { depth: number; hasChildren: boolean })[] => {
+      const childrenMap = new Map<string, TaskExtractResult[]>();
+      const rootTasks: TaskExtractResult[] = [];
+      const taskIds = new Set(taskList.map(t => t.id));
+      
+      taskList.forEach(t => {
+        if (t.parentId && taskIds.has(t.parentId)) {
+          if (!childrenMap.has(t.parentId)) {
+            childrenMap.set(t.parentId, []);
+          }
+          childrenMap.get(t.parentId)!.push(t);
+        } else {
+          rootTasks.push(t);
+        }
+      });
+      
+      const sortFn = (a: TaskExtractResult, b: TaskExtractResult) => {
         const aOrder = a.wbsOrder !== undefined ? a.wbsOrder : 9999;
         const bOrder = b.wbsOrder !== undefined ? b.wbsOrder : 9999;
         if (aOrder !== bOrder) return aOrder - bOrder;
         return a.id.localeCompare(b.id);
-      });
+      };
+      
+      rootTasks.sort(sortFn);
+      childrenMap.forEach(list => list.sort(sortFn));
+      
+      const result: (TaskExtractResult & { depth: number; hasChildren: boolean })[] = [];
+      const traverse = (task: TaskExtractResult, depth: number) => {
+        const children = childrenMap.get(task.id) || [];
+        const isCollapsed = collapsedTaskIds[task.id];
+        result.push({
+          ...task,
+          depth,
+          hasChildren: children.length > 0
+        });
+        if (!isCollapsed) {
+          children.forEach(child => traverse(child, depth + 1));
+        }
+      };
+      
+      rootTasks.forEach(root => traverse(root, 0));
+      return result;
     };
 
     projects.forEach(p => {
@@ -153,7 +196,7 @@ export default function Scheduler() {
         projectName: p.name,
         color: p.color,
         project: p,
-        tasks: sortTasks(filteredTasks.filter(t => t.projectId === p.id))
+        tasks: buildTreeList(filteredTasks.filter(t => t.projectId === p.id))
       });
     });
 
@@ -163,43 +206,107 @@ export default function Scheduler() {
         projectId: null,
         projectName: '未分類',
         color: 'var(--text-muted)',
-        tasks: sortTasks(noProjectTasks)
+        tasks: buildTreeList(noProjectTasks)
       });
     }
 
     return groups;
-  }, [tasks, projects, showOnlyMine, hideCompleted, myName]);
-
+  }, [tasks, projects, showOnlyMine, hideCompleted, myName, collapsedTaskIds]);
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
     const { destination, source } = result;
     if (!destination) return;
     if (destination.index === source.index) return;
 
-    // 現在のグループに属するタスクを取得（現在のソート順）
-    let filteredTasks = showOnlyMine && myName
-      ? tasks.filter(t => t.assignee === myName)
-      : tasks;
-      
-    if (hideCompleted) {
-      filteredTasks = filteredTasks.filter(t => t.status !== 'done');
+    // 1. プロジェクトに属する全タスクを取得
+    const projectTasks = tasks.filter(t => t.projectId === projectId);
+    
+    // 2. 表示されている（折りたたまれていない）タスクのリストを取得
+    const group = groupedTasks.find(g => g.projectId === projectId);
+    if (!group) return;
+    const visibleTasks = group.tasks;
+    
+    const draggedTask = visibleTasks[source.index];
+    if (!draggedTask) return;
+    
+    const destTask = visibleTasks[destination.index];
+    if (!destTask) return;
+
+    // 3. ツリー構造のノード型を定義して構築
+    interface TreeNode {
+      id: string;
+      task: TaskExtractResult;
+      children: TreeNode[];
     }
-      
-    const groupTasks = [...filteredTasks]
-      .filter(t => t.projectId === projectId)
-      .sort((a, b) => {
-        const aOrder = a.wbsOrder !== undefined ? a.wbsOrder : 9999;
-        const bOrder = b.wbsOrder !== undefined ? b.wbsOrder : 9999;
+
+    const nodeMap = new Map<string, TreeNode>();
+    projectTasks.forEach(t => {
+      nodeMap.set(t.id, { id: t.id, task: t, children: [] });
+    });
+
+    const roots: TreeNode[] = [];
+    projectTasks.forEach(t => {
+      const node = nodeMap.get(t.id)!;
+      if (t.parentId && nodeMap.has(t.parentId)) {
+        nodeMap.get(t.parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    // WBS順序でソートするヘルパー
+    const sortNodes = (nodes: TreeNode[]) => {
+      nodes.sort((a, b) => {
+        const aOrder = a.task.wbsOrder !== undefined ? a.task.wbsOrder : 9999;
+        const bOrder = b.task.wbsOrder !== undefined ? b.task.wbsOrder : 9999;
         if (aOrder !== bOrder) return aOrder - bOrder;
         return a.id.localeCompare(b.id);
       });
+      nodes.forEach(n => sortNodes(n.children));
+    };
+    sortNodes(roots);
 
-    // 配列の並び替え
-    const [reorderedItem] = groupTasks.splice(source.index, 1);
-    groupTasks.splice(destination.index, 0, reorderedItem);
+    // 4. ドラッグ対象ノードの兄弟（シブリング）リストを特定
+    let siblings: TreeNode[] = [];
+    if (draggedTask.parentId && nodeMap.has(draggedTask.parentId)) {
+      siblings = nodeMap.get(draggedTask.parentId)!.children;
+    } else {
+      siblings = roots;
+    }
 
-    // 新しい順序のIDリストを送り出す
-    const orderedIds = groupTasks.map(t => t.id);
+    const sourceSiblingIdx = siblings.findIndex(n => n.id === draggedTask.id);
+    if (sourceSiblingIdx === -1) return;
+
+    // 5. ターゲットタスクが含まれる兄弟ノード（またはその子孫）を特定
+    const isDescendantOfNode = (node: TreeNode, targetId: string): boolean => {
+      if (node.id === targetId) return true;
+      return node.children.some(c => isDescendantOfNode(c, targetId));
+    };
+
+    let destSiblingIdx = siblings.findIndex(sib => isDescendantOfNode(sib, destTask.id));
+
+    // ドラッグ範囲外（親が異なる場所）へドロップしようとした場合は、現在の階層の境界にクランプする
+    if (destSiblingIdx === -1) {
+      if (destination.index < source.index) {
+        destSiblingIdx = 0;
+      } else {
+        destSiblingIdx = siblings.length - 1;
+      }
+    }
+
+    // 6. 兄弟リスト内で並び替えを実行
+    const [movedNode] = siblings.splice(sourceSiblingIdx, 1);
+    siblings.splice(destSiblingIdx, 0, movedNode);
+
+    // 7. 深さ優先探索（DFS）で新しい wbsOrder を付与してID順序をフラット化
+    const orderedIds: string[] = [];
+    const traverse = (node: TreeNode) => {
+      orderedIds.push(node.id);
+      node.children.forEach(traverse);
+    };
+    roots.forEach(traverse);
+
+    // 8. 状態更新
     reorderTasks(orderedIds);
   };
 
@@ -210,6 +317,7 @@ export default function Scheduler() {
     const task = tasks.find(t => t.id === taskId);
     if (!task || !task.startDate || !task.dueDate) return;
     
+    isDraggingRef.current = false;
     setDraggingTaskId(taskId);
     setDragType(type);
     setDragStartX(e.clientX);
@@ -220,6 +328,9 @@ export default function Scheduler() {
     if (!draggingTaskId || !dragType || !initialTaskDates) return;
     
     const deltaX = e.clientX - dragStartX;
+    if (Math.abs(deltaX) > 2) {
+      isDraggingRef.current = true;
+    }
     const deltaDays = Math.round(deltaX / DAY_WIDTH);
 
     let newStart = initialTaskDates.start;
@@ -375,7 +486,7 @@ export default function Scheduler() {
                           {...provided.droppableProps}
                           style={{ display: 'flex', flexDirection: 'column' }}
                         >
-                          {group.tasks.map((task, index) => (
+                          {group.tasks.map((task: any, index) => (
                             <Draggable key={task.id} draggableId={task.id} index={index}>
                               {(provided, snapshot) => {
                                 const rowElement = (
@@ -385,13 +496,78 @@ export default function Scheduler() {
                                     {...provided.dragHandleProps}
                                     style={{
                                       ...styles.taskRowLeft,
+                                      position: 'relative',
                                       ...provided.draggableProps.style,
+                                      paddingLeft: `${task.depth * 20 + 16}px`,
                                       transform: snapshot.isDragging ? provided.draggableProps.style?.transform : 'translate(0, 0)',
-                                      background: snapshot.isDragging ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                                      background: snapshot.isDragging ? 'var(--bg-card, #1a1a24)' : 'transparent',
+                                      width: snapshot.isDragging ? '290px' : (provided.draggableProps.style as any)?.width || '100%',
+                                      border: snapshot.isDragging ? '1px solid var(--accent-primary)' : undefined,
+                                      borderRadius: snapshot.isDragging ? '6px' : undefined,
+                                      boxShadow: snapshot.isDragging ? '0 10px 20px rgba(0,0,0,0.5)' : undefined,
+                                      zIndex: snapshot.isDragging ? 9999 : undefined
                                     }}
                                     onClick={() => setEditingTaskId(task.id)}
                                   >
+                                    {/* 階層ガイド接続線の描画 */}
+                                    {Array.from({ length: task.depth }).map((_, i) => {
+                                      const lineLeft = i * 20 + 20;
+                                      const isLast = i === task.depth - 1;
+                                      return (
+                                        <div key={i} style={{
+                                          position: 'absolute',
+                                          left: `${lineLeft}px`,
+                                          top: 0,
+                                          bottom: 0,
+                                          width: '20px',
+                                          pointerEvents: 'none'
+                                        }}>
+                                          <div style={{
+                                            position: 'absolute',
+                                            left: '0px',
+                                            top: 0,
+                                            bottom: isLast ? '50%' : 0,
+                                            borderLeft: '1px dashed rgba(255,255,255,0.2)'
+                                          }} />
+                                          {isLast && (
+                                            <div style={{
+                                              position: 'absolute',
+                                              left: '0px',
+                                              top: '50%',
+                                              width: '10px',
+                                              borderTop: '1px dashed rgba(255,255,255,0.2)'
+                                            }} />
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+
                                     <GripVertical size={14} style={{ color: 'var(--text-muted)', cursor: 'grab', marginRight: '-0.25rem' }} />
+                                    
+                                    {/* 折りたたみボタン */}
+                                    {task.hasChildren ? (
+                                      <div 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCollapsedTaskIds(prev => ({ ...prev, [task.id]: !prev[task.id] }));
+                                        }}
+                                        style={{
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          width: '16px',
+                                          height: '16px',
+                                          color: 'var(--text-secondary)',
+                                          zIndex: 10
+                                        }}
+                                      >
+                                        {collapsedTaskIds[task.id] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                                      </div>
+                                    ) : (
+                                      <div style={{ width: '16px' }} />
+                                    )}
+
                                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: getStatusColor(task.status), flexShrink: 0 }} />
                                     <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem' }}>
                                       {task.title}
@@ -506,7 +682,74 @@ export default function Scheduler() {
 
             {/* タスクバー */}
             {groupedTasks.map(group => (
-              <div key={`timeline-group-${group.projectId || 'unassigned'}`}>
+              <div key={`timeline-group-${group.projectId || 'unassigned'}`} style={{ position: 'relative' }}>
+                {/* SVG 接続線レイヤー */}
+                <svg 
+                  style={{ 
+                    position: 'absolute', 
+                    top: 0, 
+                    left: 0, 
+                    width: `${days.length * DAY_WIDTH}px`, 
+                    height: `${(group.tasks.length + 1) * 36}px`, 
+                    pointerEvents: 'none', 
+                    zIndex: 1 
+                  }}
+                >
+                  {group.tasks.map((task, idx) => {
+                    if (!task.parentId || !task.startDate || !task.dueDate) return null;
+                    
+                    const parentIdx = group.tasks.findIndex(t => t.id === task.parentId);
+                    if (parentIdx === -1) return null;
+                    const parentTask = group.tasks[parentIdx];
+                    if (!parentTask.startDate || !parentTask.dueDate) return null;
+                    
+                    const parentOffsetDays = diffDays(minDate, parentTask.startDate);
+                    const childOffsetDays = diffDays(minDate, task.startDate);
+                    
+                    const parentStartX = parentOffsetDays * DAY_WIDTH;
+                    const x1 = parentStartX;
+                    const y1 = (parentIdx + 1) * 36 + 18; // block left vertical center Y
+                    
+                    const x2 = childOffsetDays * DAY_WIDTH; // childStartX
+                    const y2 = (idx + 1) * 36 + 18; // block left vertical center Y
+                    
+                    // Rounded elbow (kagi) line math
+                    const R = 8; // corner radius
+                    const verticalDist = y2 - y1;
+                    const horizDist = Math.abs(x2 - x1);
+                    const r = Math.min(R, horizDist, verticalDist);
+                    const dx = x2 > x1 ? 1 : -1;
+                    
+                    const pathD = `M ${x1} ${y1} L ${x1} ${y2 - r} Q ${x1} ${y2} ${x1 + dx * r} ${y2} L ${x2} ${y2}`;
+
+                    return (
+                      <g key={`edge-${task.id}`}>
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke={group.color}
+                          strokeWidth="1.5"
+                          strokeDasharray="4,4"
+                          opacity="0.6"
+                        />
+                        <circle
+                          cx={x1}
+                          cy={y1}
+                          r="3"
+                          fill={group.color}
+                          opacity="0.9"
+                        />
+                        <circle
+                          cx={x2}
+                          cy={y2}
+                          r="3"
+                          fill={group.color}
+                          opacity="0.9"
+                        />
+                      </g>
+                    );
+                  })}
+                </svg>
                 <div style={{ height: '36px', position: 'relative', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
                   {/* プロジェクト期間バー */}
                   {group.project && group.project.startDate && group.project.endDate && (() => {
@@ -705,7 +948,13 @@ export default function Scheduler() {
                         <div 
                           style={{ flex: 1, height: '100%', position: 'relative' }}
                           onPointerDown={e => handlePointerDown(e, task.id, 'move')}
-                          onClick={() => setEditingTaskId(task.id)}
+                          onClick={() => {
+                            if (isDraggingRef.current) {
+                              isDraggingRef.current = false;
+                              return;
+                            }
+                            setEditingTaskId(task.id);
+                          }}
                         >
                           <div style={{ position: 'relative', padding: '0 0.5rem', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', zIndex: 1, pointerEvents: 'none', height: '100%', display: 'flex', alignItems: 'center' }}>
                             {task.title} ({progress}%)
