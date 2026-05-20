@@ -50,13 +50,14 @@ export default function Minutes() {
       // メンバーの自動抽出（手動）
       const regex1 = /\[([^\]\n]{1,15})\]\s*\d{2}:\d{2}/g;
       const regex2 = /(?:^|\n)(?:\[?\d{2}:\d{2}(?::\d{2})?\]?\s*)?([^\[\]:：\n]{1,15})[=:：]/g;
+      const regexVtt = /<v\s+([^>]+)>/g; // VTTフォーマット対応
       const extractedNames = new Set<string>();
-      [regex1, regex2].forEach(regex => {
+      [regex1, regex2, regexVtt].forEach(regex => {
         let match;
         regex.lastIndex = 0;
         while ((match = regex.exec(transcript)) !== null) {
           const name = match[1].trim();
-          if (name && name.length < 15 && !name.includes('http') && !['ID', 'URL', 'Time'].includes(name) && !name.startsWith('**')) {
+          if (name && name.length < 50 && !name.includes('http') && !['ID', 'URL', 'Time'].includes(name) && !name.startsWith('**')) {
             extractedNames.add(name);
           }
         }

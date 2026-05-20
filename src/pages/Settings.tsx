@@ -83,7 +83,7 @@ export default function Settings() {
             placeholder="/Users/username/Projects/05_pj_dashboard/議事録一覧"
             style={styles.input}
           />
-          <p style={styles.helpText}>自動一括処理で読み込む、未処理の議事録テキストファイル（.txt）が格納されたディレクトリを指定してください。</p>
+          <p style={styles.helpText}>自動一括処理で読み込む、未処理の議事録ファイル（.txt / .vtt）が格納されたディレクトリを指定してください。</p>
         </div>
 
         <div style={styles.formGroup}>
