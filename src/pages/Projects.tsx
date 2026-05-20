@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X, Sparkles, Loader2 } from 'lucide-react';
+import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X, Sparkles, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { generateProjectStatus } from '../services/llmService';
 import type { Project } from '../services/llmService';
@@ -14,6 +14,14 @@ export default function Projects() {
   const { projects, addProject, updateProject, deleteProject, tasks, minutes } = useAppContext();
   
   const [isGenerating, setIsGenerating] = useState<Record<string, boolean>>({});
+  const [expandedAIStatus, setExpandedAIStatus] = useState<Record<string, boolean>>({});
+
+  const toggleAIStatus = (projectId: string) => {
+    setExpandedAIStatus(prev => ({
+      ...prev,
+      [projectId]: !prev[projectId]
+    }));
+  };
 
   const handleGenerateAIStatus = async (project: Project) => {
     setIsGenerating(prev => ({ ...prev, [project.id]: true }));
@@ -295,9 +303,13 @@ export default function Projects() {
                 {/* AI状況と概要 */}
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+                    <h4 
+                      onClick={() => toggleAIStatus(project.id)}
+                      style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                    >
                       <Sparkles size={18} color="var(--accent-primary)" />
                       AI生成 状況・詳細概要
+                      {expandedAIStatus[project.id] !== false ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
                     </h4>
                     <button 
                       className="btn-primary" 
@@ -319,14 +331,30 @@ export default function Projects() {
                     </button>
                   </div>
 
-                  {project.aiStatusSummary ? (
-                    <div className="card" style={{ background: 'rgba(99, 102, 241, 0.03)', border: '1px solid rgba(99, 102, 241, 0.15)', padding: '1.25rem' }}>
-                      <MarkdownRenderer content={project.aiStatusSummary} />
+                  {expandedAIStatus[project.id] === false && project.aiStatusSummary && (
+                    <div 
+                      onClick={() => toggleAIStatus(project.id)}
+                      style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>
+                        {project.aiStatusSummary.replace(/[#*`\n]/g, ' ').substring(0, 60)}...
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', fontWeight: 500 }}>クリックで展開</span>
                     </div>
-                  ) : (
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', textAlign: 'center' }}>
-                      このプロジェクトに紐づく議事録やタスク情報から、AI状況と詳細概要を自動生成できます。
-                    </div>
+                  )}
+
+                  {expandedAIStatus[project.id] !== false && (
+                    <>
+                      {project.aiStatusSummary ? (
+                        <div className="card" style={{ background: 'rgba(99, 102, 241, 0.03)', border: '1px solid rgba(99, 102, 241, 0.15)', padding: '1.25rem' }}>
+                          <MarkdownRenderer content={project.aiStatusSummary} />
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', textAlign: 'center' }}>
+                          このプロジェクトに紐づく議事録やタスク情報から、AI状況と詳細概要を自動生成できます。
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
