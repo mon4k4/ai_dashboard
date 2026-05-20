@@ -5,14 +5,21 @@ import type { DropResult } from '@hello-pangea/dnd';
 import { CalendarDays, FolderKanban, GripVertical, Users, Layers } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
+import MeetingEditModal from '../components/MeetingEditModal';
 import type { TaskExtractResult } from '../services/llmService';
 import * as JapaneseHolidays from 'japanese-holidays';
 
 const DAY_WIDTH = 40; // 1日のピクセル幅
 
 export default function Scheduler() {
-  const { tasks, projects, updateTask, reorderTasks } = useAppContext();
+  const { tasks, projects, updateTask, reorderTasks, updateProject } = useAppContext();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingMeeting, setEditingMeeting] = useState<{
+    projectId: string;
+    meetingId: string;
+    occurrenceDate: string;
+  } | null>(null);
+
   const [tooltipState, setTooltipState] = useState<{
     x: number;
     y: number;
@@ -26,6 +33,16 @@ export default function Scheduler() {
   const [dragStartX, setDragStartX] = useState(0);
   const [dragType, setDragType] = useState<'move' | 'resize-left' | 'resize-right' | null>(null);
   const [initialTaskDates, setInitialTaskDates] = useState<{ start: string; due: string } | null>(null);
+
+  // ミーティングドラッグ操作の状態
+  const [draggingMeetingState, setDraggingMeetingState] = useState<{
+    projectId: string;
+    meetingId: string;
+    originalDate: string;
+    hasMoved: boolean;
+  } | null>(null);
+  const [meetingDragOffset, setMeetingDragOffset] = useState<number>(0);
+  const [meetingDragStartX, setMeetingDragStartX] = useState<number>(0);
 
   // 日付操作のユーティリティ
   const addDays = (dateStr: string, days: number) => {
@@ -85,7 +102,9 @@ export default function Scheduler() {
           const end = m.endDate && m.endDate < maxDate ? m.endDate : maxDate;
           while (cur <= end) {
             if (new Date(cur).getDay() === m.dayOfWeek) {
-              dates.push(cur);
+              if (!m.exceptions || !m.exceptions.includes(cur)) {
+                dates.push(cur);
+              }
             }
             cur = addDays(cur, 1);
           }
@@ -228,6 +247,76 @@ export default function Scheduler() {
       setDraggingTaskId(null);
       setDragType(null);
       setInitialTaskDates(null);
+    }
+  };
+
+  const handleMeetingPointerDown = (e: React.PointerEvent, projectId: string, meetingId: string, date: string) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDraggingMeetingState({
+      projectId,
+      meetingId,
+      originalDate: date,
+      hasMoved: false
+    });
+    setMeetingDragStartX(e.clientX);
+    setMeetingDragOffset(0);
+  };
+
+  const handleMeetingPointerMove = (e: React.PointerEvent) => {
+    if (!draggingMeetingState) return;
+    const deltaX = e.clientX - meetingDragStartX;
+    const deltaDays = Math.round(deltaX / DAY_WIDTH);
+    setMeetingDragOffset(deltaDays);
+    if (deltaDays !== 0 && !draggingMeetingState.hasMoved) {
+      setDraggingMeetingState(prev => prev ? { ...prev, hasMoved: true } : null);
+    }
+  };
+
+  const handleMeetingPointerUp = (e: React.PointerEvent) => {
+    if (!draggingMeetingState) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+
+    const { projectId, meetingId, originalDate, hasMoved } = draggingMeetingState;
+    const deltaDays = meetingDragOffset;
+
+    setDraggingMeetingState(null);
+    setMeetingDragOffset(0);
+
+    if (hasMoved && deltaDays !== 0) {
+      const newDate = addDays(originalDate, deltaDays);
+      if (newDate && newDate !== originalDate) {
+        const proj = projects.find(p => p.id === projectId);
+        if (proj && proj.meetings) {
+          const m = proj.meetings.find(x => x.id === meetingId);
+          if (m) {
+            let updated = [...proj.meetings];
+            if (m.isRecurring) {
+              const exceptions = m.exceptions ? [...m.exceptions, originalDate] : [originalDate];
+              updated = updated.map(x => x.id === meetingId ? { ...x, exceptions } : x);
+              const newSingle = {
+                id: `meet-drag-${Date.now()}`,
+                title: m.title,
+                isRecurring: false,
+                date: newDate,
+                startTime: m.startTime,
+                endTime: m.endTime,
+                time: m.startTime
+              };
+              updated.push(newSingle);
+            } else {
+              updated = updated.map(x => x.id === meetingId ? { ...x, date: newDate } : x);
+            }
+            updateProject(projectId, { meetings: updated });
+          }
+        }
+      }
+    } else {
+      setEditingMeeting({
+        projectId,
+        meetingId,
+        occurrenceDate: originalDate
+      });
     }
   };
 
@@ -449,7 +538,9 @@ export default function Scheduler() {
                         const end = m.endDate && m.endDate < maxDate ? m.endDate : maxDate;
                         while (cur <= end) {
                           if (new Date(cur).getDay() === m.dayOfWeek) {
-                            dates.push(cur);
+                            if (!m.exceptions || !m.exceptions.includes(cur)) {
+                              dates.push(cur);
+                            }
                           }
                           cur = addDays(cur, 1);
                         }
@@ -508,6 +599,14 @@ export default function Scheduler() {
                       const hoverKey = `proj-${group.project.id}-date-${d}`;
                       const isHovered = tooltipState?.meetingsOnDate === meetingsOnDate;
 
+                      const isDraggingThis = draggingMeetingState &&
+                        draggingMeetingState.projectId === group.project.id &&
+                        meetingsOnDate.some(m => m.id === draggingMeetingState.meetingId) &&
+                        draggingMeetingState.originalDate === d;
+
+                      const currentOffsetDays = offsetDays + (isDraggingThis ? meetingDragOffset : 0);
+                      const currentLeft = (currentOffsetDays * DAY_WIDTH) + (DAY_WIDTH / 2) - 10;
+
                       return (
                         <div 
                           key={hoverKey} 
@@ -522,9 +621,16 @@ export default function Scheduler() {
                             });
                           }}
                           onMouseLeave={() => setTooltipState(null)}
+                          onPointerDown={(e) => {
+                            if (meetingsOnDate.length > 0) {
+                              handleMeetingPointerDown(e, group.project.id, meetingsOnDate[0].id, d);
+                            }
+                          }}
+                          onPointerMove={handleMeetingPointerMove}
+                          onPointerUp={handleMeetingPointerUp}
                           style={{
                             position: 'absolute',
-                            left: `${(offsetDays * DAY_WIDTH) + (DAY_WIDTH / 2) - 10}px`,
+                            left: `${currentLeft}px`,
                             top: '8px',
                             width: '20px',
                             height: '20px',
@@ -534,8 +640,11 @@ export default function Scheduler() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            zIndex: isHovered ? 50 : 5,
-                            cursor: 'pointer'
+                            zIndex: isDraggingThis ? 100 : (isHovered ? 50 : 5),
+                            cursor: 'pointer',
+                            transform: isDraggingThis ? 'scale(1.25)' : 'none',
+                            transition: isDraggingThis ? 'none' : 'transform 0.2s, left 0.1s ease-out',
+                            opacity: isDraggingThis ? 0.8 : 1,
                           }}
                         >
                           {isOverlap ? (
@@ -623,6 +732,15 @@ export default function Scheduler() {
         <TaskEditModal
           taskId={editingTaskId}
           onClose={() => setEditingTaskId(null)}
+        />
+      )}
+
+      {editingMeeting && (
+        <MeetingEditModal
+          projectId={editingMeeting.projectId}
+          meetingId={editingMeeting.meetingId}
+          occurrenceDate={editingMeeting.occurrenceDate}
+          onClose={() => setEditingMeeting(null)}
         />
       )}
       
