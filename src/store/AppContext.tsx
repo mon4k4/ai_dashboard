@@ -12,7 +12,7 @@ export interface LlmLog {
   finalOutput: string;
   latencyMs: number;
   error?: string;
-  status?: 'streaming' | 'complete' | 'error';
+  status?: 'streaming' | 'pending' | 'complete' | 'error';
   label?: string;
   statusCode?: number;
 }

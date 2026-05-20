@@ -9,14 +9,16 @@ export default function LLMLogViewer() {
   const streamingRef = useRef<HTMLPreElement | null>(null);
 
   const streamingCount = llmLogs.filter(l => l.status === 'streaming').length;
+  const pendingCount = llmLogs.filter(l => l.status === 'pending').length;
+  const activeCount = streamingCount + pendingCount;
   const isStreamingMode = settings.llmStreaming !== 'false';
   const logTitle = isStreamingMode ? 'LLM Logs (Streaming)' : 'LLM Logs (Status Mode)';
 
-  // ストリーミング中のログを自動展開
+  // 処理中のログを自動展開
   useEffect(() => {
-    const streaming = llmLogs.find(l => l.status === 'streaming');
-    if (streaming && !expandedLogId) {
-      setExpandedLogId(streaming.id);
+    const activeLog = llmLogs.find(l => l.status === 'streaming' || l.status === 'pending');
+    if (activeLog && !expandedLogId) {
+      setExpandedLogId(activeLog.id);
     }
   }, [llmLogs]);
 
@@ -31,8 +33,8 @@ export default function LLMLogViewer() {
     return (
       <button style={styles.floatingBtn} onClick={() => setIsOpen(true)} title="LLM Logs">
         <Terminal size={20} />
-        {streamingCount > 0 && <span style={{ ...styles.badge, background: '#f59e0b', animation: 'pulse 1.5s infinite' }}>●</span>}
-        {streamingCount === 0 && llmLogs.length > 0 && <span style={styles.badge}>{llmLogs.length}</span>}
+        {activeCount > 0 && <span style={{ ...styles.badge, background: '#f59e0b', animation: 'pulse 1.5s infinite' }}>●</span>}
+        {activeCount === 0 && llmLogs.length > 0 && <span style={styles.badge}>{llmLogs.length}</span>}
       </button>
     );
   }
@@ -48,6 +50,11 @@ export default function LLMLogViewer() {
               <Radio size={14} style={{ animation: 'pulse 1.5s infinite' }} /> Streaming...
             </span>
           )}
+          {pendingCount > 0 && streamingCount === 0 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#f59e0b', fontSize: '0.8rem' }}>
+              <Radio size={14} style={{ animation: 'pulse 1.5s infinite' }} /> Processing...
+            </span>
+          )}
         </div>
         <button style={styles.closeBtn} onClick={() => setIsOpen(false)}><X size={20} /></button>
       </div>
@@ -60,18 +67,20 @@ export default function LLMLogViewer() {
             {llmLogs.map(log => {
               const isExpanded = expandedLogId === log.id;
               const isStreaming = log.status === 'streaming';
+              const isPending = log.status === 'pending';
+              const isProcessing = isStreaming || isPending;
               return (
-                <div key={log.id} style={styles.logCard(!!log.error, isStreaming)}>
+                <div key={log.id} style={styles.logCard(!!log.error, isProcessing)}>
                   <div style={styles.logHeader} onClick={() => setExpandedLogId(isExpanded ? null : log.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
                       {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      {isStreaming && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', animation: 'pulse 1.5s infinite' }} />}
+                      {isProcessing && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', animation: 'pulse 1.5s infinite' }} />}
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{(log as any).label || log.endpoint.split('/').pop()}</span>
                       {log.error && <AlertTriangle size={14} color="#ef4444" />}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                      {isStreaming ? (
-                        <span style={{ color: '#f59e0b' }}>処理中...</span>
+                      {isProcessing ? (
+                        <span style={{ color: '#f59e0b' }}>{isStreaming ? 'ストリーミング中...' : '処理中...'}</span>
                       ) : (
                         <>
                           {log.statusCode !== undefined && (
@@ -122,7 +131,7 @@ export default function LLMLogViewer() {
                           <div style={styles.section}>
                             <div style={{ ...styles.sectionTitle, color: 'var(--status-done)' }}>Final Output</div>
                             <pre ref={!log.thinkingProcess && isStreaming ? streamingRef : undefined} style={{ ...styles.codeBlock, background: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
-                              {log.finalOutput || (isStreaming ? '' : '(empty)')}
+                              {log.finalOutput || (isStreaming ? '' : (isPending ? '回答生成待ち... (waiting for response...)' : '(empty)'))}
                               {isStreaming && !log.thinkingProcess && <span style={{ animation: 'blink 1s infinite' }}>▌</span>}
                             </pre>
                           </div>

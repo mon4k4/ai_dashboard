@@ -112,7 +112,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
     endpoint: `${endpoint}/chat/completions`,
     prompt: messages.find(m => m.role === 'user')?.content || '',
     responseParams: { messages: messages.map(m => ({ role: m.role, content: m.content.substring(0, 200) + '...' })), temperature: temp },
-    thinkingProcess: '', finalOutput: '', latencyMs: 0, status: 'streaming', label,
+    thinkingProcess: '', finalOutput: '', latencyMs: 0, status: streamOption ? 'streaming' : 'pending', label,
     statusCode: undefined
   };
   state.logs.push(log);
