@@ -237,7 +237,14 @@ function MinuteCard({ minute }: { minute: any }) {
           )}
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-muted)' }}>{minute.date}</span>
+          <span style={{ color: 'var(--text-muted)' }}>
+            {minute.date}
+            {minute.startTime && (
+              <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem' }}>
+                {minute.startTime}{minute.endTime ? ` - ${minute.endTime}` : ''}
+              </span>
+            )}
+          </span>
           <button className="btn-secondary" onClick={() => setIsEditing(!isEditing)} style={{ padding: '0.25rem 0.5rem', fontSize: '0.85rem' }}>
             {isEditing ? 'キャンセル' : '編集'}
           </button>

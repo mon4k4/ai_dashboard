@@ -63,6 +63,8 @@ export interface MinuteSummary {
   extractedTasks: TaskExtractResult[];
   images?: string[];
   projectId?: string; // 関連プロジェクトID
+  startTime?: string; // 会議開始時刻 (HH:MM)
+  endTime?: string;   // 会議終了時刻 (HH:MM)
 }
 
 export interface WeeklyReport {

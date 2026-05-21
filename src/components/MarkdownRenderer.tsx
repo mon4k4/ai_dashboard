@@ -108,6 +108,34 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           th: ({ children }) => <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 'bold' }}>{children}</th>,
           td: ({ children }) => <td style={{ padding: '0.75rem', textAlign: 'left' }}>{children}</td>,
           blockquote: ({ children }) => <blockquote style={{ borderLeft: '4px solid var(--accent-primary)', paddingLeft: '1rem', color: 'var(--text-muted)', margin: '1rem 0' }}>{children}</blockquote>,
+          img: ({ src, alt }) => (
+            <img
+              src={src}
+              alt={alt || ''}
+              style={{
+                maxHeight: '160px',
+                maxWidth: '280px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                objectFit: 'cover',
+                margin: '0.5rem 0',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+              }}
+              onClick={() => {
+                if (src) window.open(src, '_blank');
+              }}
+            />
+          ),
         }}
       >
         {content}
