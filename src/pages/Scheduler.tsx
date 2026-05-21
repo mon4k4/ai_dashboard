@@ -22,6 +22,7 @@ export default function Scheduler() {
   } | null>(null);
 
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>({});
 
   const [tooltipState, setTooltipState] = useState<{
     x: number;
@@ -191,27 +192,29 @@ export default function Scheduler() {
     };
 
     projects.forEach(p => {
+      const isProjectCollapsed = collapsedProjectIds[p.id || 'unassigned'];
       groups.push({
         projectId: p.id,
         projectName: p.name,
         color: p.color,
         project: p,
-        tasks: buildTreeList(filteredTasks.filter(t => t.projectId === p.id))
+        tasks: isProjectCollapsed ? [] : buildTreeList(filteredTasks.filter(t => t.projectId === p.id))
       });
     });
-
+ 
     const noProjectTasks = filteredTasks.filter(t => !t.projectId);
     if (noProjectTasks.length > 0) {
+      const isProjectCollapsed = collapsedProjectIds['unassigned'];
       groups.push({
         projectId: null,
         projectName: '未分類',
         color: 'var(--text-muted)',
-        tasks: buildTreeList(noProjectTasks)
+        tasks: isProjectCollapsed ? [] : buildTreeList(noProjectTasks)
       });
     }
-
+ 
     return groups;
-  }, [tasks, projects, showOnlyMine, hideCompleted, myName, collapsedTaskIds]);
+  }, [tasks, projects, showOnlyMine, hideCompleted, myName, collapsedTaskIds, collapsedProjectIds]);
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
     const { destination, source } = result;
@@ -471,12 +474,30 @@ export default function Scheduler() {
               <span style={{ fontWeight: 'bold' }}>プロジェクト / タスク</span>
             </div>
             <div style={{ flex: 1 }}>
-              {groupedTasks.map(group => (
-                <div key={group.projectId || 'unassigned'}>
-                  <div style={{ ...styles.projectHeader, borderLeft: `4px solid ${group.color}` }}>
-                    <FolderKanban size={16} />
-                    {group.projectName}
-                  </div>
+              {groupedTasks.map(group => {
+                const isProjectCollapsed = collapsedProjectIds[group.projectId || 'unassigned'];
+                return (
+                  <div key={group.projectId || 'unassigned'}>
+                    <div 
+                      onClick={() => {
+                        const key = group.projectId || 'unassigned';
+                        setCollapsedProjectIds(prev => ({ ...prev, [key]: !prev[key] }));
+                      }}
+                      style={{ 
+                        ...styles.projectHeader, 
+                        borderLeft: `4px solid ${group.color}`,
+                        cursor: 'pointer',
+                        userSelect: 'none'
+                      }}
+                    >
+                      {isProjectCollapsed ? (
+                        <ChevronRight size={14} style={{ color: 'var(--text-secondary)' }} />
+                      ) : (
+                        <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
+                      )}
+                      <FolderKanban size={16} />
+                      {group.projectName}
+                    </div>
                   
                   <DragDropContext onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>
                     <Droppable droppableId={`wbs-list-${group.projectId || 'unassigned'}`}>
@@ -587,7 +608,8 @@ export default function Scheduler() {
                     </Droppable>
                   </DragDropContext>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
