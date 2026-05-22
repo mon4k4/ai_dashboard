@@ -10,6 +10,31 @@ import type { TaskExtractResult } from '../services/llmService';
 import * as JapaneseHolidays from 'japanese-holidays';
 
 const DAY_WIDTH = 40; // 1日のピクセル幅
+const COLLAPSED_PROJECTS_STORAGE_KEY = 'schedulerCollapsedProjectIds';
+const COLLAPSED_TASKS_STORAGE_KEY = 'schedulerCollapsedTaskIds';
+
+function readSavedCollapseState(key: string): Record<string, boolean> {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function toggleSavedCollapseState(
+  key: string,
+  id: string,
+  setState: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
+) {
+  setState(prev => {
+    const next = { ...prev, [id]: !prev[id] };
+    localStorage.setItem(key, JSON.stringify(next));
+    return next;
+  });
+}
 
 export default function Scheduler() {
   const { tasks, projects, updateTask, reorderTasks, updateProject, moveProject } = useAppContext();
@@ -21,8 +46,12 @@ export default function Scheduler() {
     occurrenceDate: string;
   } | null>(null);
 
-  const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>({});
-  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>({});
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>(
+    () => readSavedCollapseState(COLLAPSED_TASKS_STORAGE_KEY)
+  );
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>(
+    () => readSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY)
+  );
 
   const [tooltipState, setTooltipState] = useState<{
     x: number;
@@ -485,7 +514,7 @@ export default function Scheduler() {
                     <div 
                       onClick={() => {
                         const key = group.projectId || 'unassigned';
-                        setCollapsedProjectIds(prev => ({ ...prev, [key]: !prev[key] }));
+                        toggleSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY, key, setCollapsedProjectIds);
                       }}
                       style={{ 
                         ...styles.projectHeader, 
@@ -629,7 +658,7 @@ export default function Scheduler() {
                                       <div 
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setCollapsedTaskIds(prev => ({ ...prev, [task.id]: !prev[task.id] }));
+                                          toggleSavedCollapseState(COLLAPSED_TASKS_STORAGE_KEY, task.id, setCollapsedTaskIds);
                                         }}
                                         style={{
                                           cursor: 'pointer',

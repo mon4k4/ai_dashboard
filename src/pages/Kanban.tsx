@@ -14,6 +14,31 @@ const COLUMNS = [
   { id: 'done', title: 'Done' }
 ];
 
+const COLLAPSED_PROJECTS_STORAGE_KEY = 'kanbanCollapsedProjectIds';
+
+function readSavedCollapseState(key: string): Record<string, boolean> {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function toggleSavedCollapseState(
+  key: string,
+  id: string,
+  setState: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
+) {
+  setState(prev => {
+    const next = { ...prev, [id]: !prev[id] };
+    localStorage.setItem(key, JSON.stringify(next));
+    return next;
+  });
+}
+
 export default function Kanban() {
   const { tasks, projects, addTask, updateTask, moveProject } = useAppContext();
   const [transcript, setTranscript] = useState('');
@@ -22,7 +47,9 @@ export default function Kanban() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [isFormExpanded, setIsFormExpanded] = useState(false);
-  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>({});
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>(
+    () => readSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY)
+  );
   
   const myName = localStorage.getItem('myName') || '';
 
@@ -167,7 +194,7 @@ export default function Kanban() {
                   <div 
                     onClick={() => {
                       const key = group.projectId || 'unassigned';
-                      setCollapsedProjectIds(prev => ({ ...prev, [key]: !prev[key] }));
+                      toggleSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY, key, setCollapsedProjectIds);
                     }}
                     style={{
                       display: 'flex',
