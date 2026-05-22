@@ -5,6 +5,87 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { buildSummaryPrompt } from './src/prompts/summaryPrompts'
 import { buildTaskExtractionPrompt } from './src/prompts/taskPrompts'
+import * as http from 'node:http';
+import * as https from 'node:https';
+
+// undici (Node 18 native fetch) のデフォルト5分タイムアウトを回避するための専用カスタムfetch
+function customFetch(urlStr, options) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlStr);
+    const client = url.protocol === 'https:' ? https : http;
+    const reqOptions = {
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      timeout: 0, // Node.js Socketのタイムアウトを完全に無効化
+    };
+
+    const req = client.request(url, reqOptions, (res) => {
+      const response = {
+        ok: res.statusCode >= 200 && res.statusCode < 300,
+        status: res.statusCode,
+        headers: {
+          get: (name) => res.headers[name.toLowerCase()] || null,
+        },
+        body: options.stream ? {
+          getReader: () => {
+            const queue = [];
+            let resolveNext = null;
+            let isEnded = false;
+
+            res.on('data', chunk => {
+              queue.push(chunk);
+              if (resolveNext) {
+                resolveNext({ done: false, value: queue.shift() });
+                resolveNext = null;
+              }
+            });
+
+            res.on('end', () => {
+              isEnded = true;
+              if (resolveNext) {
+                resolveNext({ done: true });
+                resolveNext = null;
+              }
+            });
+
+            res.on('error', (err) => {
+              if (resolveNext) {
+                resolveNext(Promise.reject(err));
+                resolveNext = null;
+              }
+            });
+
+            return {
+              read: () => {
+                if (queue.length > 0) return Promise.resolve({ done: false, value: queue.shift() });
+                if (isEnded) return Promise.resolve({ done: true });
+                return new Promise((r) => { resolveNext = r; });
+              }
+            };
+          }
+        } : null,
+        json: () => new Promise((resJson, rejJson) => {
+          let buf = '';
+          res.on('data', c => buf += c.toString());
+          res.on('end', () => {
+            try { resJson(JSON.parse(buf)); } catch(e) { rejJson(e); }
+          });
+          res.on('error', rejJson);
+        })
+      };
+      resolve(response);
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
 
 // ====== バックエンド状態管理 ======
 const state = {
@@ -128,7 +209,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
     
     if (streamOption) {
       debugLog(`[callLlm] Fetching: ${fetchUrl} stream=true`);
-      const res = await fetch(fetchUrl, {
+      const res = await customFetch(fetchUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp, stream: true }),
@@ -186,7 +267,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
     } else {
       // NON-STREAMING mode
       debugLog(`[callLlm] Fetching: ${fetchUrl} stream=false`);
-      const res = await fetch(fetchUrl, {
+      const res = await customFetch(fetchUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp, stream: false }),
@@ -207,7 +288,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
     // ストリーミングで何も取得できなかった場合は非ストリーミングで再試行 (ストリーミング指定時のみ)
     if (streamOption && !thinkingFull && !outputFull) {
       debugLog('[callLlm] No streaming data - retrying without stream');
-      const res2 = await fetch(`${endpoint}/chat/completions`, {
+      const res2 = await customFetch(`${endpoint}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp }),
