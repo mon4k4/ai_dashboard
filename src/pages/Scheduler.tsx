@@ -12,7 +12,7 @@ import * as JapaneseHolidays from 'japanese-holidays';
 const DAY_WIDTH = 40; // 1日のピクセル幅
 
 export default function Scheduler() {
-  const { tasks, projects, updateTask, reorderTasks, updateProject } = useAppContext();
+  const { tasks, projects, updateTask, reorderTasks, updateProject, moveProject } = useAppContext();
   const isDraggingRef = useRef(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<{
@@ -476,6 +476,10 @@ export default function Scheduler() {
             <div style={{ flex: 1 }}>
               {groupedTasks.map(group => {
                 const isProjectCollapsed = collapsedProjectIds[group.projectId || 'unassigned'];
+                const projectIndex = group.projectId ? projects.findIndex(p => p.id === group.projectId) : -1;
+                const isFirst = projectIndex === 0;
+                const isLast = projectIndex === projects.length - 1;
+
                 return (
                   <div key={group.projectId || 'unassigned'}>
                     <div 
@@ -487,16 +491,71 @@ export default function Scheduler() {
                         ...styles.projectHeader, 
                         borderLeft: `4px solid ${group.color}`,
                         cursor: 'pointer',
-                        userSelect: 'none'
+                        userSelect: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingRight: '0.5rem'
                       }}
                     >
-                      {isProjectCollapsed ? (
-                        <ChevronRight size={14} style={{ color: 'var(--text-secondary)' }} />
-                      ) : (
-                        <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {isProjectCollapsed ? (
+                          <ChevronRight size={14} style={{ color: 'var(--text-secondary)' }} />
+                        ) : (
+                          <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
+                        )}
+                        <FolderKanban size={16} />
+                        <span>{group.projectName}</span>
+                      </div>
+
+                      {group.projectId && (
+                        <div style={{ display: 'flex', gap: '0.25rem' }} onClick={e => e.stopPropagation()}>
+                          <button
+                            disabled={isFirst}
+                            onClick={() => moveProject(group.projectId!, 'up')}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: isFirst ? 'var(--text-muted)' : 'var(--text-secondary)',
+                              cursor: isFirst ? 'not-allowed' : 'pointer',
+                              padding: '0.2rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.75rem',
+                              opacity: isFirst ? 0.3 : 0.7,
+                              transition: 'opacity 0.2s'
+                            }}
+                            title="上に移動"
+                            onMouseOver={e => !isFirst && (e.currentTarget.style.opacity = '1')}
+                            onMouseOut={e => !isFirst && (e.currentTarget.style.opacity = '0.7')}
+                          >
+                            ▲
+                          </button>
+                          <button
+                            disabled={isLast}
+                            onClick={() => moveProject(group.projectId!, 'down')}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: isLast ? 'var(--text-muted)' : 'var(--text-secondary)',
+                              cursor: isLast ? 'not-allowed' : 'pointer',
+                              padding: '0.2rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.75rem',
+                              opacity: isLast ? 0.3 : 0.7,
+                              transition: 'opacity 0.2s'
+                            }}
+                            title="下に移動"
+                            onMouseOver={e => !isLast && (e.currentTarget.style.opacity = '1')}
+                            onMouseOut={e => !isLast && (e.currentTarget.style.opacity = '0.7')}
+                          >
+                            ▼
+                          </button>
+                        </div>
                       )}
-                      <FolderKanban size={16} />
-                      {group.projectName}
                     </div>
                   
                   <DragDropContext onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>

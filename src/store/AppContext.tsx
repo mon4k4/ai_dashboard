@@ -43,6 +43,7 @@ interface AppState {
   addProject: (project: Project) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
+  moveProject: (id: string, direction: 'up' | 'down') => void;
   addMember: (member: TeamMember) => void;
   updateMember: (id: string, updates: Partial<TeamMember>) => void;
   deleteMember: (id: string) => void;
@@ -321,6 +322,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProjects(prev => prev.filter(p => p.id !== id));
   }, []);
 
+  const moveProject = useCallback((id: string, direction: 'up' | 'down') => {
+    setProjects(prev => {
+      const idx = prev.findIndex(p => p.id === id);
+      if (idx === -1) return prev;
+      const newProjects = [...prev];
+      if (direction === 'up' && idx > 0) {
+        const temp = newProjects[idx];
+        newProjects[idx] = newProjects[idx - 1];
+        newProjects[idx - 1] = temp;
+      } else if (direction === 'down' && idx < newProjects.length - 1) {
+        const temp = newProjects[idx];
+        newProjects[idx] = newProjects[idx + 1];
+        newProjects[idx + 1] = temp;
+      }
+      return newProjects;
+    });
+  }, []);
+
   const addMember = useCallback((member: TeamMember) => {
     setMembers(prev => [...prev, member]);
   }, []);
@@ -379,7 +398,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{ 
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
       addTask, updateTask, commitTask, deleteTask, reorderTasks, addMinute, updateMinute,
-      addProject, updateProject, deleteProject,
+      addProject, updateProject, deleteProject, moveProject,
       addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers, addPendingMembers,
       settings, saveSettings
     }}>
