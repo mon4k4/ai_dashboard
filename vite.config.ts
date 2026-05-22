@@ -375,13 +375,13 @@ function getUnprocessedItems(dirPath, includeProcessed = false) {
 }
 
 // ====== 会議日時パーサー ======
-function parseMeetingDatetime(content, filename) {
+function parseMeetingDatetime(content, filename, isVtt = false) {
   let startTime = null;
   let endTime = null;
   let meetingDate = null;
 
   // ヘッダから日時を検出: **日時:** 2026/05/21 14:00 - 15:08
-  const headerMatch = content.match(/[\*]*日時[\*]*[：:]\s*[\*]*\s*(\d{4})[\/-](\d{2})[\/-](\d{2})\s+(\d{2}):(\d{2})\s*[-–~〜]\s*(\d{2}):(\d{2})/);
+  const headerMatch = content.match(/[\*]*日時[\*]*[：:]\s*[\*]*\s*(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(\d{2}):(\d{2})\s*[-–~〜]\s*(\d{2}):(\d{2})/);
   if (headerMatch) {
     meetingDate = `${headerMatch[1]}-${headerMatch[2]}-${headerMatch[3]}`;
     startTime = `${headerMatch[4]}:${headerMatch[5]}`;
@@ -389,13 +389,41 @@ function parseMeetingDatetime(content, filename) {
     debugLog(`[parseMeetingDatetime] Header parsed: date=${meetingDate} start=${startTime} end=${endTime}`);
   }
 
-  // フォルダ名からフォールバック: 2026-05-21 14.00.15 タイトル
-  if (!startTime) {
+  // フォルダ名から日付をフォールバック: 2026-05-21 14.00.15 タイトル
+  if (!meetingDate) {
     const folderMatch = filename.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2})\.(\d{2})\.(\d{2})/);
     if (folderMatch) {
       meetingDate = folderMatch[1];
+      debugLog(`[parseMeetingDatetime] Folder fallback: date=${meetingDate}`);
+    }
+  }
+
+  // .txt ファイルの場合: 会話タイムスタンプ [名前] HH:MM:SS は絶対時刻
+  // 最初と最後のタイムスタンプをそのまま開始・終了時刻として使用
+  if (!isVtt && !endTime) {
+    const timestampRegex = /\[[^\]]+\]\s+(\d{2}):(\d{2}):(\d{2})/g;
+    let firstTimestamp = null;
+    let lastTimestamp = null;
+    let match;
+    while ((match = timestampRegex.exec(content)) !== null) {
+      const ts = { h: parseInt(match[1]), m: parseInt(match[2]), s: parseInt(match[3]) };
+      if (!firstTimestamp) firstTimestamp = ts;
+      lastTimestamp = ts;
+    }
+
+    if (firstTimestamp && lastTimestamp) {
+      startTime = `${String(firstTimestamp.h).padStart(2, '0')}:${String(firstTimestamp.m).padStart(2, '0')}`;
+      endTime = `${String(lastTimestamp.h).padStart(2, '0')}:${String(lastTimestamp.m).padStart(2, '0')}`;
+      debugLog(`[parseMeetingDatetime] TXT absolute timestamps: start=${startTime} end=${endTime}`);
+    }
+  }
+
+  // フォルダ名から開始時刻のフォールバック（上記で取得できなかった場合）
+  if (!startTime) {
+    const folderMatch = filename.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2})\.(\d{2})\.(\d{2})/);
+    if (folderMatch) {
       startTime = `${folderMatch[2]}:${folderMatch[3]}`;
-      debugLog(`[parseMeetingDatetime] Folder fallback: date=${meetingDate} start=${startTime}`);
+      debugLog(`[parseMeetingDatetime] Folder time fallback: start=${startTime}`);
     }
   }
 
@@ -488,7 +516,7 @@ async function processFile(file, llmEndpoint, streamOption = true) {
   }
 
   // ====== 会議時刻の検出 ======
-  const { meetingDate, startTime: meetingStartTime, endTime: meetingEndTime } = parseMeetingDatetime(file.content, file.filename);
+  const { meetingDate, startTime: meetingStartTime, endTime: meetingEndTime } = parseMeetingDatetime(file.content, file.filename, file.isVtt);
   if (meetingDate) extractedDate = meetingDate;
 
   // ====== スクリーンショット自動連携 ======
