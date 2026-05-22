@@ -132,6 +132,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp, stream: true }),
+        signal: AbortSignal.timeout(3600000), // 1時間タイムアウト
       });
       statusCode = res.status;
       debugLog(`[callLlm] Response status: ${res.status}`);
@@ -189,6 +190,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp, stream: false }),
+        signal: AbortSignal.timeout(3600000), // 1時間タイムアウト
       });
       statusCode = res.status;
       debugLog(`[callLlm] Response status: ${res.status}`);
@@ -209,6 +211,7 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, temperature: temp }),
+        signal: AbortSignal.timeout(3600000), // 1時間タイムアウト
       });
       statusCode = res2.status;
       if (res2.ok) {
@@ -543,6 +546,12 @@ function backendPlugin() {
     name: 'backend-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        // Disable timeout for long-running LLM API requests
+        if (req.url && req.url.startsWith('/api/')) {
+          req.setTimeout(0);
+          res.setTimeout(0);
+        }
+
         // SSE
         if (req.url === '/api/batch/events' && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
