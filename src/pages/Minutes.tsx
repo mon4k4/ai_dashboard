@@ -6,6 +6,19 @@ import { FileText, Loader2, Image as ImageIcon, Play, CheckCircle2, CheckSquare 
 import { format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
+const COLLAPSED_MONTHS_STORAGE_KEY = 'minutesCollapsedMonths';
+
+function readSavedCollapsedMonths(): Record<string, boolean> {
+  try {
+    const saved = localStorage.getItem(COLLAPSED_MONTHS_STORAGE_KEY);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function Minutes() {
   const { minutes, addMinute, batchStatus, members, addPendingMembers, projects } = useAppContext();
   const [transcript, setTranscript] = useState('');
@@ -14,6 +27,9 @@ export default function Minutes() {
   const [images, setImages] = useState<string[]>([]);
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [projectId, setProjectId] = useState('');
+  const [collapsedMonths, setCollapsedMonths] = useState<Record<string, boolean>>(
+    () => readSavedCollapsedMonths()
+  );
 
   const targetDir = localStorage.getItem('minutesDir') || './議事録一覧';
 
@@ -179,7 +195,19 @@ export default function Minutes() {
           }, {} as Record<string, any[]>);
 
           return Object.keys(grouped).sort().reverse().map(month => (
-            <details key={month} open style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+            <details
+              key={month}
+              open={!collapsedMonths[month]}
+              onToggle={(e) => {
+                const isCollapsed = !e.currentTarget.open;
+                setCollapsedMonths(prev => {
+                  const next = { ...prev, [month]: isCollapsed };
+                  localStorage.setItem(COLLAPSED_MONTHS_STORAGE_KEY, JSON.stringify(next));
+                  return next;
+                });
+              }}
+              style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
+            >
               <summary style={{ padding: '1rem', fontWeight: 'bold', cursor: 'pointer', outline: 'none', display: 'flex', alignItems: 'center' }}>
                 {month === 'Unknown' ? '日付未設定' : `${month.replace('-', '年')}月`} <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({grouped[month].length}件)</span>
               </summary>
