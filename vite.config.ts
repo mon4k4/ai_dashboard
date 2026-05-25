@@ -540,7 +540,6 @@ async function processFile(file, llmEndpoint, streamOption = true) {
 
   // ====== スクリーンショット自動連携 ======
   let screenshotImages = [];
-  let summaryWithImages = sumResult.output;
   
   try {
     const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
@@ -555,13 +554,6 @@ async function processFile(file, llmEndpoint, streamOption = true) {
       
       if (matchedScreenshots.length > 0) {
         screenshotImages = matchedScreenshots.map(ss => `/api/image/view?path=${encodeURIComponent(ss.path)}`);
-        
-        // 要約末尾にスクリーンショットセクションを追加
-        summaryWithImages += '\n\n---\n\n### 📸 会議中のスクリーンショット\n\n';
-        for (const ss of matchedScreenshots) {
-          const imgUrl = `/api/image/view?path=${encodeURIComponent(ss.path)}`;
-          summaryWithImages += `**${ss.time}** \n![${ss.filename}](${imgUrl})\n\n`;
-        }
         debugLog(`[processFile] ${matchedScreenshots.length} screenshots attached to minute`);
       }
     }
@@ -573,7 +565,7 @@ async function processFile(file, llmEndpoint, streamOption = true) {
     id: genId('min'),
     date: extractedDate,
     title: title,
-    summary: summaryWithImages,
+    summary: sumResult.output,
     content: file.content,
     extractedTasks: tasks,
     startTime: meetingStartTime || undefined,
@@ -790,16 +782,7 @@ function backendPlugin() {
                 const matched = scanScreenshots(imageDir, minute.date, minute.startTime, minute.endTime);
                 if (matched.length > 0) {
                   const imageUrls = matched.map(ss => `/api/image/view?path=${encodeURIComponent(ss.path)}`);
-                  minute.images = imageUrls;
-                  
-                  // 要約にスクリーンショットセクションがなければ追加
-                  if (minute.summary && !minute.summary.includes('会議中のスクリーンショット')) {
-                    minute.summary += '\n\n---\n\n### 📸 会議中のスクリーンショット\n\n';
-                    for (const ss of matched) {
-                      const imgUrl = `/api/image/view?path=${encodeURIComponent(ss.path)}`;
-                      minute.summary += `**${ss.time}** \n![${ss.filename}](${imgUrl})\n\n`;
-                    }
-                  }
+                  minute.images = Array.from(new Set([...(minute.images || []), ...imageUrls]));
                   
                   updatedCount++;
                   debugLog(`[scan-screenshots] Attached ${matched.length} screenshots to "${minute.title}"`);

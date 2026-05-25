@@ -63,6 +63,49 @@ export interface PendingMemberGroup {
 
 const AppContext = createContext<AppState | undefined>(undefined);
 
+function extractMarkdownImageSources(content: string): string[] {
+  const sources: string[] = [];
+  const regex = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    sources.push(match[1]);
+  }
+  return sources;
+}
+
+function stripMarkdownImages(content: string): string {
+  const lines = content.split('\n');
+  const removeIndexes = new Set<number>();
+
+  lines.forEach((line, index) => {
+    if (!/!\[[^\]]*\]\([^)]+\)/.test(line)) return;
+
+    removeIndexes.add(index);
+    if (index > 0 && lines[index - 1].trim() === '') removeIndexes.add(index - 1);
+    if (index > 0 && /^\*\*.+\*\*\s*$/.test(lines[index - 1].trim())) removeIndexes.add(index - 1);
+    if (index > 1 && removeIndexes.has(index - 1) && /^\*\*.+\*\*\s*$/.test(lines[index - 2].trim())) removeIndexes.add(index - 2);
+    if (index + 1 < lines.length && lines[index + 1].trim() === '') removeIndexes.add(index + 1);
+  });
+
+  return lines
+    .filter((_, index) => !removeIndexes.has(index))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n?---\n\n### .? 会議中のスクリーンショット\s*$/u, '')
+    .trimEnd();
+}
+
+function normalizeMinuteImages(minute: MinuteSummary): MinuteSummary {
+  const markdownImages = extractMarkdownImageSources(minute.summary || '');
+  if (markdownImages.length === 0) return minute;
+
+  return {
+    ...minute,
+    summary: stripMarkdownImages(minute.summary || ''),
+    images: Array.from(new Set([...(minute.images || []), ...markdownImages])),
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<TaskExtractResult[]>([]);
   const [minutes, setMinutes] = useState<MinuteSummary[]>([]);
@@ -85,7 +128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .then(res => res.json())
       .then(data => {
         if (data.tasks) setTasks(data.tasks);
-        if (data.minutes) setMinutes(data.minutes);
+        if (data.minutes) setMinutes(data.minutes.map(normalizeMinuteImages));
         if (data.projects) setProjects(data.projects);
         if (data.members) setMembers(data.members);
         if (data.reports) setReports(data.reports);

@@ -47,6 +47,10 @@ function removeMarkdownImage(content: string, src: string): string {
   return lines.slice(0, start).concat(lines.slice(end)).join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
 }
 
+function stripAllMarkdownImages(content: string): string {
+  return extractMarkdownImages(content).reduce((current, image) => removeMarkdownImage(current, image.src), content);
+}
+
 export default function Minutes() {
   const { minutes, addMinute, batchStatus, members, addPendingMembers, projects } = useAppContext();
   const [transcript, setTranscript] = useState('');
@@ -276,22 +280,21 @@ function MinuteCard({ minute }: { minute: any }) {
   };
 
   const handleSave = () => {
-    updateMinute(minute.id, { summary: editSummary, projectId: editProjectId || undefined });
+    const embeddedImages = extractMarkdownImages(editSummary).map(image => image.src);
+    updateMinute(minute.id, {
+      summary: stripAllMarkdownImages(editSummary),
+      projectId: editProjectId || undefined,
+      images: Array.from(new Set([...(minute.images || []), ...embeddedImages])),
+    });
     setIsEditing(false);
   };
 
   const handleDeleteAttachedImage = (index: number) => {
-    updateMinute(minute.id, { images: (minute.images || []).filter((_: string, i: number) => i !== index) });
-  };
-
-  const handleDeleteMarkdownImage = (src: string) => {
-    setEditSummary(prev => removeMarkdownImage(prev, src));
+    updateMinute(minute.id, { images: attachedImages.filter((_: string, i: number) => i !== index) });
   };
 
   const associatedProject = projects.find(p => p.id === minute.projectId);
-  const markdownImages = extractMarkdownImages(editSummary);
   const attachedImages = minute.images || [];
-  const editableImagesCount = markdownImages.length + attachedImages.length;
 
   return (
     <div className="glass-panel" style={{ padding: '1.5rem' }}>
@@ -338,19 +341,10 @@ function MinuteCard({ minute }: { minute: any }) {
             rows={6}
             style={{ width: '100%', resize: 'vertical' }}
           />
-          {editableImagesCount > 0 && (
+          {attachedImages.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>スクリーンショット / 画像</label>
               <div style={styles.editImageGrid}>
-                {markdownImages.map((image, i) => (
-                  <EditableImageThumb
-                    key={`${image.src}-${i}`}
-                    src={image.src}
-                    alt={image.alt || 'screenshot'}
-                    onPreview={() => setPreviewImage({ src: image.src, alt: image.alt || '' })}
-                    onDelete={() => handleDeleteMarkdownImage(image.src)}
-                  />
-                ))}
                 {attachedImages.map((src: string, i: number) => (
                   <EditableImageThumb
                     key={`${src}-${i}`}
@@ -411,9 +405,9 @@ function MinuteCard({ minute }: { minute: any }) {
         </div>
       )}
 
-      {minute.images && minute.images.length > 0 && (
+      {attachedImages.length > 0 && (
         <div style={{ ...styles.imageGallery, marginTop: '1rem' }}>
-          {minute.images.map((src: string, i: number) => (
+          {attachedImages.map((src: string, i: number) => (
             <img
               key={i}
               src={src}
