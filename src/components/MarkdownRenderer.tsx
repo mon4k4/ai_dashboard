@@ -70,11 +70,14 @@ interface MarkdownRendererProps {
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
+
   return (
-    <div className="markdown-content" style={{ lineHeight: '1.7', fontSize: '0.95rem' }}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
+    <>
+      <div className="markdown-content" style={{ lineHeight: '1.7', fontSize: '0.95rem' }}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
           code({ inline, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
             const value = String(children).replace(/\n$/, '');
@@ -108,38 +111,85 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           th: ({ children }) => <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: 'bold' }}>{children}</th>,
           td: ({ children }) => <td style={{ padding: '0.75rem', textAlign: 'left' }}>{children}</td>,
           blockquote: ({ children }) => <blockquote style={{ borderLeft: '4px solid var(--accent-primary)', paddingLeft: '1rem', color: 'var(--text-muted)', margin: '1rem 0' }}>{children}</blockquote>,
-          img: ({ src, alt }) => (
-            <img
-              src={src}
-              alt={alt || ''}
-              style={{
-                maxHeight: '160px',
-                maxWidth: '280px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                objectFit: 'cover',
-                margin: '0.5rem 0',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-              }}
-              onClick={() => {
-                if (src) window.open(src, '_blank');
-              }}
-            />
-          ),
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
+            img: ({ src, alt }) => (
+              <img
+                src={src}
+                alt={alt || ''}
+                style={{
+                  maxHeight: '160px',
+                  maxWidth: '280px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  objectFit: 'cover',
+                  margin: '0.5rem 0',
+                  cursor: 'zoom-in',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)';
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+                }}
+                onClick={() => {
+                  if (src) setPreviewImage({ src, alt: alt || '' });
+                }}
+              />
+            ),
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+
+      {previewImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreviewImage(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10000,
+            background: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            cursor: 'zoom-out'
+          }}
+        >
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewImage(null);
+            }}
+            style={{ position: 'absolute', top: '1rem', right: '1rem', padding: '0.5rem 0.75rem' }}
+          >
+            閉じる
+          </button>
+          <img
+            src={previewImage.src}
+            alt={previewImage.alt}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 'min(96vw, 1400px)',
+              maxHeight: '90vh',
+              objectFit: 'contain',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+              cursor: 'default'
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 };

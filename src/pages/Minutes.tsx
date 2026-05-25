@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../store/AppContext';
 import { summarizeMeeting, startBatchProcess } from '../services/llmService';
-import { FileText, Loader2, Image as ImageIcon, Play, CheckCircle2, CheckSquare } from 'lucide-react';
+import { FileText, Loader2, Image as ImageIcon, Play, CheckCircle2, CheckSquare, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 
@@ -17,6 +17,34 @@ function readSavedCollapsedMonths(): Record<string, boolean> {
   } catch {
     return {};
   }
+}
+
+function extractMarkdownImages(content: string): { alt: string; src: string }[] {
+  const images: { alt: string; src: string }[] = [];
+  const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    images.push({ alt: match[1], src: match[2] });
+  }
+  return images;
+}
+
+function removeMarkdownImage(content: string, src: string): string {
+  const lines = content.split('\n');
+  const imageLineIndex = lines.findIndex(line => {
+    const match = line.match(/!\[[^\]]*\]\(([^)]+)\)/);
+    return match?.[1] === src;
+  });
+  if (imageLineIndex === -1) return content;
+
+  let start = imageLineIndex;
+  if (start > 0 && lines[start - 1].trim() === '') start--;
+  if (start > 0 && /^\*\*.+\*\*\s*$/.test(lines[start - 1].trim())) start--;
+
+  let end = imageLineIndex + 1;
+  if (end < lines.length && lines[end].trim() === '') end++;
+
+  return lines.slice(0, start).concat(lines.slice(end)).join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
 }
 
 export default function Minutes() {
@@ -229,8 +257,9 @@ function MinuteCard({ minute }: { minute: any }) {
   const { updateMinute, projects } = useAppContext();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
-  const [editSummary, setEditSummary] = useState(minute.summary);
+  const [editSummary, setEditSummary] = useState<string>(minute.summary || '');
   const [editProjectId, setEditProjectId] = useState(minute.projectId || '');
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -251,7 +280,16 @@ function MinuteCard({ minute }: { minute: any }) {
     setIsEditing(false);
   };
 
+  const handleDeleteAttachedImage = (index: number) => {
+    updateMinute(minute.id, { images: (minute.images || []).filter((_: string, i: number) => i !== index) });
+  };
+
+  const handleDeleteMarkdownImage = (src: string) => {
+    setEditSummary(prev => removeMarkdownImage(prev, src));
+  };
+
   const associatedProject = projects.find(p => p.id === minute.projectId);
+  const markdownImages = extractMarkdownImages(editSummary);
 
   return (
     <div className="glass-panel" style={{ padding: '1.5rem' }}>
@@ -298,6 +336,38 @@ function MinuteCard({ minute }: { minute: any }) {
             rows={6}
             style={{ width: '100%', resize: 'vertical' }}
           />
+          {markdownImages.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>要約内のスクリーンショット</label>
+              <div style={styles.editImageGrid}>
+                {markdownImages.map((image, i) => (
+                  <EditableImageThumb
+                    key={`${image.src}-${i}`}
+                    src={image.src}
+                    alt={image.alt || 'screenshot'}
+                    onPreview={() => setPreviewImage({ src: image.src, alt: image.alt || '' })}
+                    onDelete={() => handleDeleteMarkdownImage(image.src)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {minute.images && minute.images.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>添付画像</label>
+              <div style={styles.editImageGrid}>
+                {minute.images.map((src: string, i: number) => (
+                  <EditableImageThumb
+                    key={`${src}-${i}`}
+                    src={src}
+                    alt="attached"
+                    onPreview={() => setPreviewImage({ src, alt: 'attached' })}
+                    onDelete={() => handleDeleteAttachedImage(i)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
               <ImageIcon size={16} /> 画像を追加
@@ -349,10 +419,61 @@ function MinuteCard({ minute }: { minute: any }) {
       {minute.images && minute.images.length > 0 && (
         <div style={{ ...styles.imageGallery, marginTop: '1rem' }}>
           {minute.images.map((src: string, i: number) => (
-            <img key={i} src={src} alt="attached" style={styles.thumbnail} />
+            <img
+              key={i}
+              src={src}
+              alt="attached"
+              style={{ ...styles.thumbnail, cursor: 'zoom-in' }}
+              onClick={() => setPreviewImage({ src, alt: 'attached' })}
+            />
           ))}
         </div>
       )}
+      {previewImage && (
+        <ImagePreview src={previewImage.src} alt={previewImage.alt} onClose={() => setPreviewImage(null)} />
+      )}
+    </div>
+  );
+}
+
+function EditableImageThumb({ src, alt, onPreview, onDelete }: { src: string; alt: string; onPreview: () => void; onDelete: () => void }) {
+  return (
+    <div style={styles.editImageItem}>
+      <img src={src} alt={alt} style={styles.editThumbnail} onClick={onPreview} />
+      <button
+        type="button"
+        className="btn-secondary"
+        onClick={onDelete}
+        style={styles.deleteImageButton}
+        title="画像を削除"
+      >
+        <Trash2 size={14} />
+        削除
+      </button>
+    </div>
+  );
+}
+
+function ImagePreview({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={styles.previewOverlay}
+    >
+      <button
+        type="button"
+        className="btn-secondary"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        style={styles.previewCloseButton}
+      >
+        閉じる
+      </button>
+      <img src={src} alt={alt} onClick={(e) => e.stopPropagation()} style={styles.previewImage} />
     </div>
   );
 }
@@ -360,4 +481,30 @@ function MinuteCard({ minute }: { minute: any }) {
 const styles = {
   imageGallery: { display: 'flex', gap: '0.5rem', overflowX: 'auto' as const, paddingBottom: '0.5rem' },
   thumbnail: { height: '80px', borderRadius: '4px', objectFit: 'cover' as const, border: '1px solid var(--border-color)' },
+  editImageGrid: { display: 'flex', gap: '0.75rem', flexWrap: 'wrap' as const },
+  editImageItem: { display: 'flex', flexDirection: 'column' as const, gap: '0.4rem', width: '140px' },
+  editThumbnail: { width: '140px', height: '84px', borderRadius: '4px', objectFit: 'cover' as const, border: '1px solid var(--border-color)', cursor: 'zoom-in' },
+  deleteImageButton: { padding: '0.35rem 0.5rem', fontSize: '0.8rem', justifyContent: 'center' },
+  previewOverlay: {
+    position: 'fixed' as const,
+    inset: 0,
+    zIndex: 10000,
+    background: 'rgba(0,0,0,0.78)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2rem',
+    cursor: 'zoom-out'
+  },
+  previewCloseButton: { position: 'absolute' as const, top: '1rem', right: '1rem', padding: '0.5rem 0.75rem' },
+  previewImage: {
+    maxWidth: 'min(96vw, 1400px)',
+    maxHeight: '90vh',
+    objectFit: 'contain' as const,
+    borderRadius: '8px',
+    border: '1px solid var(--border-color)',
+    boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
+    cursor: 'default'
+  },
 };
