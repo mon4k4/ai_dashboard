@@ -290,6 +290,8 @@ function MinuteCard({ minute }: { minute: any }) {
 
   const associatedProject = projects.find(p => p.id === minute.projectId);
   const markdownImages = extractMarkdownImages(editSummary);
+  const attachedImages = minute.images || [];
+  const editableImagesCount = markdownImages.length + attachedImages.length;
 
   return (
     <div className="glass-panel" style={{ padding: '1.5rem' }}>
@@ -336,9 +338,9 @@ function MinuteCard({ minute }: { minute: any }) {
             rows={6}
             style={{ width: '100%', resize: 'vertical' }}
           />
-          {markdownImages.length > 0 && (
+          {editableImagesCount > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>要約内のスクリーンショット</label>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>スクリーンショット / 画像</label>
               <div style={styles.editImageGrid}>
                 {markdownImages.map((image, i) => (
                   <EditableImageThumb
@@ -349,14 +351,7 @@ function MinuteCard({ minute }: { minute: any }) {
                     onDelete={() => handleDeleteMarkdownImage(image.src)}
                   />
                 ))}
-              </div>
-            </div>
-          )}
-          {minute.images && minute.images.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>添付画像</label>
-              <div style={styles.editImageGrid}>
-                {minute.images.map((src: string, i: number) => (
+                {attachedImages.map((src: string, i: number) => (
                   <EditableImageThumb
                     key={`${src}-${i}`}
                     src={src}
