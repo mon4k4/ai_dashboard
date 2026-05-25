@@ -132,7 +132,7 @@ export default function Settings() {
           >
             <option value="">-- 未設定 --</option>
             {members.map(m => (
-              <option key={m.id} value={m.name}>{m.name}</option>
+              <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
           <p style={styles.helpText}>WBSやKanbanで「自分のタスク」をフィルタリングするために使用します。</p>

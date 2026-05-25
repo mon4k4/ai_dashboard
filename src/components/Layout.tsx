@@ -96,6 +96,18 @@ export default function Layout() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {newTasks.map(task => {
                     const isExpanded = expandedTaskId === task.id;
+                    const selectedProject = projects.find(p => p.id === task.projectId);
+                    const projectStakeholders = selectedProject?.stakeholders || [];
+                    const filteredMembers = (task.projectId && projectStakeholders.length > 0)
+                      ? members.filter(m => projectStakeholders.includes(m.id))
+                      : members;
+                    const displayMembers = [...filteredMembers];
+                    if (task.memberId && !displayMembers.some(m => m.id === task.memberId)) {
+                      const currentMember = members.find(m => m.id === task.memberId);
+                      if (currentMember) {
+                        displayMembers.push(currentMember);
+                      }
+                    }
                     return (
                       <div key={task.id} className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <div 
@@ -139,11 +151,11 @@ export default function Layout() {
                                 <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>担当者:</label>
                                 <select 
                                   value={task.memberId || ''} 
-                                  onChange={(e) => updateTask(task.id, { memberId: e.target.value, assignee: members.find(m => m.id === e.target.value)?.name || task.assignee })}
+                                  onChange={(e) => updateTask(task.id, { memberId: e.target.value })}
                                   style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem' }}
                                 >
-                                  <option value="">-- 未設定 ({task.assignee}) --</option>
-                                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                  <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
+                                  {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
                               </div>
                             </div>

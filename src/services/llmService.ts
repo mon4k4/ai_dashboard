@@ -31,6 +31,7 @@ export interface Project {
   color: string;
   workload: Record<string, number>; // e.g. { "2026-05": 160 }
   meetings?: ProjectMeeting[];
+  stakeholders?: string[]; // Array of memberIds
   aiStatusSummary?: string; // AI生成の状況と詳細概要
 }
 

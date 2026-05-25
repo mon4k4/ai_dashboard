@@ -20,6 +20,22 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
 
   const projectTasks = tasks.filter(t => t.projectId === task.projectId);
 
+  // プロジェクト関係者による担当者フィルタリング
+  const selectedProject = projects.find(p => p.id === task.projectId);
+  const projectStakeholders = selectedProject?.stakeholders || [];
+  const filteredMembers = (task.projectId && projectStakeholders.length > 0)
+    ? members.filter(m => projectStakeholders.includes(m.id))
+    : members;
+
+  // 現在アサインされているメンバーは常に選択肢に含める
+  const displayMembers = [...filteredMembers];
+  if (task.memberId && !displayMembers.some(m => m.id === task.memberId)) {
+    const currentMember = members.find(m => m.id === task.memberId);
+    if (currentMember) {
+      displayMembers.push(currentMember);
+    }
+  }
+
   // 循環参照を防ぐための親候補フィルタリング
   const getValidParentOptions = () => {
     const descendants = new Set<string>();
@@ -164,13 +180,12 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
               <select 
                 value={task.memberId || ''} 
                 onChange={e => updateTask(task.id, { 
-                  memberId: e.target.value,
-                  assignee: members.find(m => m.id === e.target.value)?.name || task.assignee
+                  memberId: e.target.value
                 })}
                 style={styles.input}
               >
-                <option value="">-- 未設定 ({task.assignee}) --</option>
-                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
+                {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
           </div>

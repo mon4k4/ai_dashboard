@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X, Sparkles, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { FolderKanban, Plus, Trash2, Calendar, Clock, Edit2, Save, X, Sparkles, Loader2, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { generateProjectStatus } from '../services/llmService';
 import type { Project } from '../services/llmService';
@@ -299,6 +299,7 @@ export default function Projects() {
                 </div>
 
                 <ProjectMeetingManager project={project} updateProject={updateProject} />
+                <ProjectStakeholderManager project={project} updateProject={updateProject} />
 
                 {/* AI状況と概要 */}
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -624,6 +625,97 @@ function ProjectMeetingManager({ project, updateProject }: { project: Project, u
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function ProjectStakeholderManager({ project, updateProject }: { project: Project, updateProject: (id: string, updates: Partial<Project>) => void }) {
+  const { members } = useAppContext();
+  const stakeholders = project.stakeholders || [];
+
+  const handleAddStakeholder = (memberId: string) => {
+    if (!memberId) return;
+    if (stakeholders.includes(memberId)) return;
+    updateProject(project.id, { stakeholders: [...stakeholders, memberId] });
+  };
+
+  const handleRemoveStakeholder = (memberId: string) => {
+    updateProject(project.id, { stakeholders: stakeholders.filter(id => id !== memberId) });
+  };
+
+  const availableMembers = members.filter(m => !stakeholders.includes(m.id));
+
+  return (
+    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+        <Users size={16} color="var(--accent-primary)" />
+        プロジェクト関係者
+      </h4>
+      
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+        {stakeholders.map(id => {
+          const member = members.find(m => m.id === id);
+          if (!member) return null;
+          return (
+            <span 
+              key={id} 
+              style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '0.35rem', 
+                background: 'rgba(99, 102, 241, 0.15)', 
+                border: '1px solid rgba(99, 102, 241, 0.3)', 
+                color: 'var(--text-primary)', 
+                padding: '0.25rem 0.6rem', 
+                borderRadius: '40px', 
+                fontSize: '0.85rem' 
+              }}
+            >
+              {member.name}
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({member.group})</span>
+              <button 
+                onClick={() => handleRemoveStakeholder(id)}
+                style={{ 
+                  background: 'transparent', 
+                  border: 'none', 
+                  color: 'var(--text-muted)', 
+                  cursor: 'pointer', 
+                  padding: '0 0.1rem', 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  fontSize: '0.85rem'
+                }}
+                title="関係者から外す"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          );
+        })}
+
+        {availableMembers.length > 0 ? (
+          <select
+            value=""
+            onChange={(e) => handleAddStakeholder(e.target.value)}
+            style={{ 
+              background: 'rgba(255,255,255,0.05)', 
+              border: '1px dashed var(--border-color)', 
+              borderRadius: 'var(--radius-sm)', 
+              color: 'var(--text-secondary)', 
+              padding: '0.25rem 0.5rem', 
+              fontSize: '0.85rem', 
+              cursor: 'pointer' 
+            }}
+          >
+            <option value="" disabled>+ 関係者を追加</option>
+            {availableMembers.map(m => (
+              <option key={m.id} value={m.id}>{m.name} ({m.group})</option>
+            ))}
+          </select>
+        ) : (
+          stakeholders.length === 0 && <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>登録メンバーがいません</span>
+        )}
+      </div>
     </div>
   );
 }

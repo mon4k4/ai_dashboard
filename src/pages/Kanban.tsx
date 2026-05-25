@@ -40,7 +40,7 @@ function toggleSavedCollapseState(
 }
 
 export default function Kanban() {
-  const { tasks, projects, addTask, updateTask, moveProject } = useAppContext();
+  const { tasks, projects, members, addTask, updateTask, moveProject } = useAppContext();
   const [transcript, setTranscript] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +51,7 @@ export default function Kanban() {
     () => readSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY)
   );
   
-  const myName = localStorage.getItem('myName') || '';
+  const myMemberId = localStorage.getItem('myName') || '';
 
   const handleExtract = async () => {
     if (!transcript.trim()) return;
@@ -90,9 +90,11 @@ export default function Kanban() {
     updateTask(draggableId, updates);
   };
 
-  const filteredTasks = showOnlyMine && myName
-    ? tasks.filter(t => t.assignee === myName)
-    : tasks;
+  // 未承認タスク（isNew: true）は除外する
+  const approvedTasks = tasks.filter(t => !t.isNew);
+  const filteredTasks = showOnlyMine && myMemberId
+    ? approvedTasks.filter(t => t.memberId === myMemberId)
+    : approvedTasks;
 
   const groupedTasks = useMemo(() => {
     const groups: { 
@@ -132,10 +134,10 @@ export default function Kanban() {
             type="checkbox" 
             checked={showOnlyMine} 
             onChange={e => setShowOnlyMine(e.target.checked)} 
-            disabled={!myName}
+            disabled={!myMemberId}
             style={{ width: '16px', height: '16px' }}
           />
-          自分のタスクのみ表示 {(!myName) && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(設定から名前を登録してください)</span>}
+          自分のタスクのみ表示 {(!myMemberId) && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(設定から名前を登録してください)</span>}
         </label>
       </div>
 
@@ -385,7 +387,9 @@ export default function Kanban() {
                                                 );
                                               })()}
                                               <div style={styles.taskMeta}>
-                                                <span style={styles.assignee}>{task.assignee}</span>
+                                                <span style={styles.assignee}>
+                                                  {members.find(m => m.id === task.memberId)?.name || '未割り当て'}
+                                                </span>
                                                 {task.progress !== undefined && (
                                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{task.progress}%</span>
                                                 )}

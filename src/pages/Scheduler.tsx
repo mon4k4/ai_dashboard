@@ -157,7 +157,7 @@ export default function Scheduler() {
 
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
-  const myName = localStorage.getItem('myName') || '';
+  const myMemberId = localStorage.getItem('myName') || '';
   // プロジェクトごとにタスクをグループ化（階層構造）
   const groupedTasks = useMemo(() => {
     const groups: { 
@@ -168,9 +168,11 @@ export default function Scheduler() {
       tasks: (TaskExtractResult & { depth: number; hasChildren: boolean })[] 
     }[] = [];
     
-    let filteredTasks = showOnlyMine && myName
-      ? tasks.filter(t => t.assignee === myName)
-      : tasks;
+    // 未承認タスク（isNew: true）は除外する
+    const approvedTasks = tasks.filter(t => !t.isNew);
+    let filteredTasks = showOnlyMine && myMemberId
+      ? approvedTasks.filter(t => t.memberId === myMemberId)
+      : approvedTasks;
 
     if (hideCompleted) {
       filteredTasks = filteredTasks.filter(t => t.status !== 'done');
@@ -243,7 +245,7 @@ export default function Scheduler() {
     }
  
     return groups;
-  }, [tasks, projects, showOnlyMine, hideCompleted, myName, collapsedTaskIds, collapsedProjectIds]);
+  }, [tasks, projects, showOnlyMine, hideCompleted, myMemberId, collapsedTaskIds, collapsedProjectIds]);
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
     const { destination, source } = result;
@@ -485,10 +487,10 @@ export default function Scheduler() {
               type="checkbox" 
               checked={showOnlyMine} 
               onChange={e => setShowOnlyMine(e.target.checked)} 
-              disabled={!myName}
+              disabled={!myMemberId}
               style={{ width: '16px', height: '16px' }}
             />
-            自分のタスクのみ表示 {(!myName) && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(設定から名前を登録してください)</span>}
+            自分のタスクのみ表示 {(!myMemberId) && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(設定から名前を登録してください)</span>}
           </label>
         </div>
       </div>

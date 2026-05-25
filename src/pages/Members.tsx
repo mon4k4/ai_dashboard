@@ -152,21 +152,25 @@ export default function Members() {
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>名前</th>
-              <th style={styles.th}>グループ</th>
-              <th style={{ ...styles.th, width: '80px', textAlign: 'center' }}>操作</th>
+              <th style={{ ...styles.th, width: '25%' }}>ID</th>
+              <th style={{ ...styles.th, width: '30%' }}>名前</th>
+              <th style={{ ...styles.th, width: '30%' }}>グループ</th>
+              <th style={{ ...styles.th, width: '15%', textAlign: 'center' }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {members.length === 0 ? (
               <tr>
-                <td colSpan={3} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                   メンバーが登録されていません。
                 </td>
               </tr>
             ) : (
               members.map(member => (
                 <tr key={member.id} style={styles.tr}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {member.id}
+                  </td>
                   <td style={styles.td}>
                     <input 
                       value={member.name}
