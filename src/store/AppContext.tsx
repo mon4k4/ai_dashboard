@@ -384,7 +384,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addMember = useCallback((member: TeamMember) => {
-    setMembers(prev => [...prev, member]);
+    setMembers(prev => {
+      if (prev.some(m => m.name === member.name)) {
+        return prev;
+      }
+      return [...prev, member];
+    });
   }, []);
 
   const updateMember = useCallback((id: string, updates: Partial<TeamMember>) => {
