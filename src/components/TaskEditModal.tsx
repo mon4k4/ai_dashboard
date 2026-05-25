@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, ArrowRight, CornerDownRight, Trash2 } from 'lucide-react';
+import { X, ArrowRight, CornerDownRight, Trash2, Calendar, FileText } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 interface TaskEditModalProps {
@@ -8,7 +8,7 @@ interface TaskEditModalProps {
 }
 
 export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
-  const { tasks, projects, members, updateTask, addTask, deleteTask } = useAppContext();
+  const { tasks, projects, members, updateTask, addTask, deleteTask, minutes } = useAppContext();
   const [activeTaskId, setActiveTaskId] = useState(taskId);
 
   useEffect(() => {
@@ -16,6 +16,10 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
   }, [taskId]);
   
   const task = tasks.find(t => t.id === activeTaskId);
+
+  const originatingMinute = task
+    ? (minutes || []).find(m => m.extractedTasks && m.extractedTasks.some(t => t.id === task.id))
+    : undefined;
   if (!task) return null;
 
   const projectTasks = tasks.filter(t => t.projectId === task.projectId);
@@ -109,6 +113,36 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
         </div>
 
         <div style={styles.body}>
+          {/* 議事録要約から生成された場合の関連議事録表示 */}
+          {originatingMinute && (
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '0.25rem', 
+              background: 'rgba(99, 102, 241, 0.08)', 
+              padding: '0.6rem 1rem', 
+              borderRadius: '6px', 
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              marginBottom: '0.25rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 600 }}>
+                <FileText size={14} />
+                <span>AI自動生成タスク (議事録由来)</span>
+              </div>
+              <div style={{ fontSize: '0.825rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                議事録: <span style={{ fontWeight: 600 }}>{originatingMinute.title}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.775rem', color: 'var(--text-muted)' }}>
+                <Calendar size={12} />
+                <span>
+                  開催日時: {originatingMinute.date} 
+                  {originatingMinute.startTime && ` ${originatingMinute.startTime}`}
+                  {originatingMinute.endTime && ` - ${originatingMinute.endTime}`}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* 親タスクへのパンくず・移動ナビゲーション */}
           {task.parentId && (() => {
             const parent = tasks.find(t => t.id === task.parentId);
@@ -341,7 +375,7 @@ const styles = {
   modal: {
     background: 'var(--bg-main)',
     width: '90%',
-    maxWidth: '500px',
+    maxWidth: '650px',
     borderRadius: 'var(--radius-lg)',
     boxShadow: 'var(--shadow-lg)',
     display: 'flex',
