@@ -77,6 +77,20 @@ export default function Kanban() {
     }
   };
 
+  const handleAddManualTask = (projectId: string | null, status: 'todo' | 'in-progress' | 'done') => {
+    const newTaskId = `task-manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    addTask({
+      id: newTaskId,
+      title: '新しいタスク',
+      status,
+      projectId: projectId || undefined,
+      assignee: '',
+      progress: 0,
+      isNew: false
+    });
+    setEditingTaskId(newTaskId);
+  };
+
   const onDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result;
     if (!destination) return;
@@ -288,7 +302,24 @@ export default function Kanban() {
                         return (
                           <div key={col.id} className="glass-panel" style={{ ...styles.column, flex: '1 1 300px', minWidth: '260px' }}>
                             <h4 style={styles.columnHeader}>
-                              {col.title} <span style={styles.badge}>{colTasks.length}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {col.title} <span style={styles.badge}>{colTasks.length}</span>
+                              </span>
+                              <button
+                                onClick={() => handleAddManualTask(group.projectId, col.id as any)}
+                                style={styles.addColumnTaskBtn}
+                                title="タスクを追加"
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                                  e.currentTarget.style.color = 'var(--accent-primary)';
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = 'transparent';
+                                  e.currentTarget.style.color = 'var(--text-secondary)';
+                                }}
+                              >
+                                <Plus size={16} />
+                              </button>
                             </h4>
                             
                             <Droppable droppableId={droppableId}>
@@ -455,9 +486,22 @@ const styles = {
   columnHeader: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: '0.5rem',
     marginBottom: '1rem',
     fontSize: '1.1rem',
+  },
+  addColumnTaskBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    padding: '0.2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '4px',
+    transition: 'background 0.2s, color 0.2s',
   },
   badge: {
     background: 'var(--bg-card)',
