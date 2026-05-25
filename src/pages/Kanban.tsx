@@ -45,7 +45,9 @@ export default function Kanban() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [showOnlyMine, setShowOnlyMine] = useState(() => {
+    return localStorage.getItem('kanban_showOnlyMine') === 'true';
+  });
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>(
     () => readSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY)
@@ -133,7 +135,10 @@ export default function Kanban() {
           <input 
             type="checkbox" 
             checked={showOnlyMine} 
-            onChange={e => setShowOnlyMine(e.target.checked)} 
+            onChange={e => {
+              setShowOnlyMine(e.target.checked);
+              localStorage.setItem('kanban_showOnlyMine', String(e.target.checked));
+            }} 
             disabled={!myMemberId}
             style={{ width: '16px', height: '16px' }}
           />

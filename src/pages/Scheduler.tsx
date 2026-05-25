@@ -155,8 +155,12 @@ export default function Scheduler() {
     return map;
   }, [projects, minDate, maxDate]);
 
-  const [showOnlyMine, setShowOnlyMine] = useState(false);
-  const [hideCompleted, setHideCompleted] = useState(false);
+  const [showOnlyMine, setShowOnlyMine] = useState(() => {
+    return localStorage.getItem('scheduler_showOnlyMine') === 'true';
+  });
+  const [hideCompleted, setHideCompleted] = useState(() => {
+    return localStorage.getItem('scheduler_hideCompleted') === 'true';
+  });
   const myMemberId = localStorage.getItem('myName') || '';
   // プロジェクトごとにタスクをグループ化（階層構造）
   const groupedTasks = useMemo(() => {
@@ -477,7 +481,10 @@ export default function Scheduler() {
             <input 
               type="checkbox" 
               checked={hideCompleted} 
-              onChange={e => setHideCompleted(e.target.checked)} 
+              onChange={e => {
+                setHideCompleted(e.target.checked);
+                localStorage.setItem('scheduler_hideCompleted', String(e.target.checked));
+              }} 
               style={{ width: '16px', height: '16px' }}
             />
             完了済みのタスクを非表示
@@ -486,7 +493,10 @@ export default function Scheduler() {
             <input 
               type="checkbox" 
               checked={showOnlyMine} 
-              onChange={e => setShowOnlyMine(e.target.checked)} 
+              onChange={e => {
+                setShowOnlyMine(e.target.checked);
+                localStorage.setItem('scheduler_showOnlyMine', String(e.target.checked));
+              }} 
               disabled={!myMemberId}
               style={{ width: '16px', height: '16px' }}
             />
