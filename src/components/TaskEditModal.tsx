@@ -299,7 +299,7 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
                     assignee: task.assignee,
                     memberId: task.memberId,
                     progress: 0,
-                    isNew: true
+                    isNew: false
                   };
                   addTask(newChild);
                   setActiveTaskId(newChildId);
