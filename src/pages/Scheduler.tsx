@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -40,6 +40,43 @@ export default function Scheduler() {
   const { tasks, projects, updateTask, reorderTasks, updateProject, moveProject } = useAppContext();
   const isDraggingRef = useRef(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  // 列幅ドラッグリサイズ状態
+  const [leftColumnWidth, setLeftColumnWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('scheduler_leftColumnWidth');
+    return saved ? parseInt(saved, 10) : 320;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+
+  // 本日スクロール用の参照とフラグ
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasScrolledToToday = useRef(false);
+
+  const handleResizeStart = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = leftColumnWidth;
+  };
+
+  const handleResizeMove = (e: React.PointerEvent) => {
+    if (!isResizing) return;
+    const deltaX = e.clientX - resizeStartX.current;
+    const newWidth = Math.max(200, Math.min(600, resizeStartWidth.current + deltaX));
+    setLeftColumnWidth(newWidth);
+  };
+
+  const handleResizeEnd = (e: React.PointerEvent) => {
+    if (isResizing) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      setIsResizing(false);
+      localStorage.setItem('scheduler_leftColumnWidth', String(leftColumnWidth));
+    }
+  };
   const [editingMeeting, setEditingMeeting] = useState<{
     projectId: string;
     meetingId: string;
@@ -122,6 +159,25 @@ export default function Scheduler() {
     }
     return list;
   }, [minDate, maxDate]);
+
+  // 本日（Today）基準への初回マウント時のスクロール調整
+  useEffect(() => {
+    if (scrollContainerRef.current && !hasScrolledToToday.current && days.length > 0) {
+      const scrollTimer = setTimeout(() => {
+        if (scrollContainerRef.current) {
+          const todayIndex = days.indexOf(todayStr);
+          if (todayIndex !== -1) {
+            const todayX = todayIndex * DAY_WIDTH;
+            const container = scrollContainerRef.current;
+            const timelineAreaWidth = container.clientWidth - leftColumnWidth;
+            container.scrollLeft = Math.max(0, todayX - (timelineAreaWidth / 2));
+            hasScrolledToToday.current = true;
+          }
+        }
+      }, 50);
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [days, todayStr, leftColumnWidth]);
 
   // 全プロジェクトのミーティングを日付ごとに集計 (重複チェック用)
   const allMeetingsByDate = useMemo(() => {
@@ -505,15 +561,39 @@ export default function Scheduler() {
         </div>
       </div>
 
-      <div className="glass-panel" style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+      <div className="glass-panel" ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
         <div style={{ display: 'flex', minWidth: 'max-content' }}>
           
           {/* 左側: タスクリスト (横スクロール時も固定) */}
-          <div style={{ width: '300px', position: 'sticky', left: 0, zIndex: 20, background: 'var(--bg-main)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: `${leftColumnWidth}px`, position: 'sticky', left: 0, zIndex: 20, background: 'var(--bg-main)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
             {/* 左側ヘッダー (縦スクロール時も固定) */}
             <div style={{ height: '60px', position: 'sticky', top: 0, zIndex: 30, borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', padding: '0 1rem', background: 'var(--bg-main)' }}>
               <span style={{ fontWeight: 'bold' }}>プロジェクト / タスク</span>
             </div>
+
+            {/* Excel風ドラッグリサイズハンドル */}
+            <div 
+              onPointerDown={handleResizeStart}
+              onPointerMove={handleResizeMove}
+              onPointerUp={handleResizeEnd}
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: '-3px',
+                bottom: 0,
+                width: '6px',
+                cursor: 'col-resize',
+                zIndex: 35,
+                background: isResizing ? 'var(--accent-primary)' : 'transparent',
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={e => {
+                if (!isResizing) e.currentTarget.style.background = 'rgba(99, 102, 241, 0.4)';
+              }}
+              onMouseLeave={e => {
+                if (!isResizing) e.currentTarget.style.background = 'transparent';
+              }}
+            />
             <div style={{ flex: 1 }}>
               {groupedTasks.map(group => {
                 const isProjectCollapsed = collapsedProjectIds[group.projectId || 'unassigned'];
@@ -622,7 +702,7 @@ export default function Scheduler() {
                                       paddingLeft: `${task.depth * 20 + 16}px`,
                                       transform: snapshot.isDragging ? provided.draggableProps.style?.transform : 'translate(0, 0)',
                                       background: snapshot.isDragging ? 'var(--bg-card, #1a1a24)' : 'transparent',
-                                      width: snapshot.isDragging ? '290px' : (provided.draggableProps.style as any)?.width || '100%',
+                                      width: snapshot.isDragging ? `${leftColumnWidth - 10}px` : (provided.draggableProps.style as any)?.width || '100%',
                                       border: snapshot.isDragging ? '1px solid var(--accent-primary)' : undefined,
                                       borderRadius: snapshot.isDragging ? '6px' : undefined,
                                       boxShadow: snapshot.isDragging ? '0 10px 20px rgba(0,0,0,0.5)' : undefined,
