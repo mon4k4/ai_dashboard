@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, FileText, FileBarChart, Settings, Bell, Check, FolderKanban, Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, FileText, FileBarChart, Settings, Bell, Check, FolderKanban, Users, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import LLMLogViewer from './LLMLogViewer';
 
 export default function Layout() {
-  const { tasks, projects, members, commitTask, updateTask, settings } = useAppContext();
+  const { tasks, projects, members, commitTask, updateTask, settings, deleteTask } = useAppContext();
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   
@@ -162,7 +162,37 @@ export default function Layout() {
                           </div>
                         )}
                         
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                          <button 
+                            className="btn-danger-outline"
+                            onClick={() => {
+                              if (window.confirm('このタスクを却下して削除してもよろしいですか？')) {
+                                deleteTask(task.id);
+                              }
+                            }} 
+                            style={{ 
+                              padding: '0.4rem 0.8rem', 
+                              fontSize: '0.85rem',
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid rgba(239, 68, 68, 0.2)',
+                              color: '#ef4444',
+                              borderRadius: 'var(--radius-sm)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                            }}
+                          >
+                            <X size={14} />
+                            却下
+                          </button>
                           <button className="btn-primary" onClick={() => commitTask(task.id)} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
                             <Check size={14} />
                             承認して追加
