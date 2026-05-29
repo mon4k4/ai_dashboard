@@ -1,0 +1,302 @@
+/* WBS (Work Breakdown Structure) Specific Styles */
+
+.wbs-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1.5rem;
+}
+
+.wbs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wbs-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wbs-header-icon {
+  background: var(--accent-gradient);
+  color: white;
+  width: 38px;
+  height: 38px;
+  borderRadius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  boxShadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+
+.wbs-tab-container {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.wbs-tab {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  white-space: nowrap;
+  outline: none;
+}
+
+.wbs-tab:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.wbs-tree-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  overflow-y: auto;
+  min-height: 400px;
+}
+
+.wbs-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+}
+
+.wbs-tree-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 850px;
+}
+
+.wbs-table-header {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.wbs-table-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.wbs-tree-body {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.5rem;
+}
+
+.wbs-task-row {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.01);
+  margin-bottom: 0.25rem;
+}
+
+.wbs-task-row:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-color);
+}
+
+.wbs-indent-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.1);
+  left: 50%;
+}
+
+.wbs-collapse-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  transition: transform 0.2s ease, background-color 0.2s;
+  padding: 0;
+}
+
+.wbs-collapse-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.wbs-title-input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.wbs-title-input:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+.wbs-title-input:focus {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-color: var(--border-focus);
+}
+
+.wbs-meta-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.wbs-control-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 130px;
+}
+
+.wbs-inline-select {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  outline: none;
+  width: 100%;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.wbs-inline-select:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.wbs-date-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 130px;
+  justify-content: center;
+  color: var(--text-secondary);
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wbs-date-badge:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-focus);
+}
+
+.wbs-progress-container {
+  display: flex;
+  align-items: center;
+  width: 70px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+}
+
+.wbs-progress-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.wbs-percent-symbol {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.wbs-status-select {
+  width: 120px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid;
+  outline: none;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.wbs-action-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100px;
+  justify-content: center;
+}
+
+.wbs-row-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.wbs-row-action-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.08);
+}

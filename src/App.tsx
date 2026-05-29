@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Kanban from './pages/Kanban';
 import Scheduler from './pages/Scheduler';
+import WBS from './pages/WBS';
 import Minutes from './pages/Minutes';
 import Report from './pages/Report';
 import Settings from './pages/Settings';
@@ -15,6 +16,7 @@ function App() {
         <Route index element={<Navigate to="/kanban" replace />} />
         <Route path="kanban" element={<Kanban />} />
         <Route path="scheduler" element={<Scheduler />} />
+        <Route path="wbs" element={<WBS />} />
         <Route path="minutes" element={<Minutes />} />
         <Route path="report" element={<Report />} />
         <Route path="projects" element={<Projects />} />

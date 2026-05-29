@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, FileText, FileBarChart, Settings, Bell, Check, FolderKanban, Users, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, FileText, FileBarChart, Settings, Bell, Check, FolderKanban, Users, ChevronDown, ChevronRight, X, FolderTree } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import LLMLogViewer from './LLMLogViewer';
 
@@ -26,6 +26,7 @@ export default function Layout() {
 
   const navItems = [
     { path: '/kanban', label: 'Kanban', icon: <LayoutDashboard size={20} /> },
+    { path: '/wbs', label: 'WBS', icon: <FolderTree size={20} /> },
     { path: '/scheduler', label: 'Scheduler', icon: <CalendarDays size={20} /> },
     { path: '/projects', label: 'Projects', icon: <FolderKanban size={20} /> },
     { path: '/members', label: 'Members', icon: <Users size={20} /> },
