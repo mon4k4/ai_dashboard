@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Edit2, ChevronDown, Calendar, Users, FolderTree } from 'lucide-react';
+import { Plus, Trash2, Edit2, ChevronDown, Calendar, Users, FolderTree, Filter } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -33,6 +33,10 @@ export default function WBS() {
 
   // 詳細編集中のタスクID
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  // フィルター状態
+  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
+  const [filterMemberId, setFilterMemberId] = useState<string>('');
 
   // プロジェクト一覧に変化があった場合の安全なフォールバック
   useEffect(() => {
@@ -113,15 +117,43 @@ export default function WBS() {
   // 承認済みタスクのみをフィルタリング
   const approvedTasks = useMemo(() => tasks.filter(t => !t.isNew), [tasks]);
 
-  // アクティブなプロジェクトのタスク一覧を取得
+  // フィルター条件にマッチするタスクIDセットを構築（祖先も含める）
   const filteredTasks = useMemo(() => {
-    return approvedTasks.filter(t => {
+    // まずプロジェクトで絞り込み
+    const projectFiltered = approvedTasks.filter(t => {
       if (activeProjectId === null) {
-        return !t.projectId; // 未分類
+        return !t.projectId;
       }
       return t.projectId === activeProjectId;
     });
-  }, [approvedTasks, activeProjectId]);
+
+    // フィルターが一切ない場合はそのまま返す
+    if (!showIncompleteOnly && !filterMemberId) {
+      return projectFiltered;
+    }
+
+    // フィルター条件に直接マッチするタスクを特定
+    const directMatchIds = new Set<string>();
+    projectFiltered.forEach(t => {
+      let matches = true;
+      if (showIncompleteOnly && t.status === 'done') matches = false;
+      if (filterMemberId && t.memberId !== filterMemberId) matches = false;
+      if (matches) directMatchIds.add(t.id);
+    });
+
+    // マッチしたタスクの祖先チェーンも表示対象に含める
+    const taskById = new Map(projectFiltered.map(t => [t.id, t]));
+    const visibleIds = new Set(directMatchIds);
+    directMatchIds.forEach(id => {
+      let current = taskById.get(id);
+      while (current?.parentId && taskById.has(current.parentId)) {
+        visibleIds.add(current.parentId);
+        current = taskById.get(current.parentId);
+      }
+    });
+
+    return projectFiltered.filter(t => visibleIds.has(t.id));
+  }, [approvedTasks, activeProjectId, showIncompleteOnly, filterMemberId]);
 
   // アクティブなプロジェクトの担当可能なメンバー一覧
   const currentProjectMembers = useMemo(() => {
@@ -460,6 +492,46 @@ export default function WBS() {
           />
           未分類
         </button>
+      </div>
+
+      {/* フィルターツールバー */}
+      <div className="wbs-filter-toolbar">
+        <div className="wbs-filter-group">
+          <Filter size={14} className="wbs-filter-icon" />
+          <label className="wbs-filter-toggle">
+            <input
+              type="checkbox"
+              checked={showIncompleteOnly}
+              onChange={e => setShowIncompleteOnly(e.target.checked)}
+            />
+            <span className="wbs-toggle-slider" />
+            <span className="wbs-filter-label">未完了のみ</span>
+          </label>
+        </div>
+        <div className="wbs-filter-group">
+          <Users size={14} className="wbs-filter-icon" />
+          <select
+            className="wbs-filter-select"
+            value={filterMemberId}
+            onChange={e => setFilterMemberId(e.target.value)}
+          >
+            <option value="">すべての担当者</option>
+            {currentProjectMembers.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+        {(showIncompleteOnly || filterMemberId) && (
+          <button
+            className="wbs-filter-clear-btn"
+            onClick={() => {
+              setShowIncompleteOnly(false);
+              setFilterMemberId('');
+            }}
+          >
+            フィルター解除
+          </button>
+        )}
       </div>
 
       {/* ツリーコンテンツ */}

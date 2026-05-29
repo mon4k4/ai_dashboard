@@ -356,3 +356,118 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* Filter Toolbar */
+.wbs-filter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.wbs-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wbs-filter-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Toggle Switch */
+.wbs-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wbs-filter-toggle input[type="checkbox"] {
+  display: none;
+}
+
+.wbs-toggle-slider {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  transition: background 0.25s ease;
+  flex-shrink: 0;
+}
+
+.wbs-toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 0.25s ease, background 0.25s ease;
+}
+
+.wbs-filter-toggle input:checked + .wbs-toggle-slider {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+.wbs-filter-toggle input:checked + .wbs-toggle-slider::after {
+  transform: translateX(16px);
+  background: #818cf8;
+}
+
+.wbs-filter-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Filter Select */
+.wbs-filter-select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  min-width: 120px;
+}
+
+.wbs-filter-select:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.wbs-filter-select:focus {
+  border-color: var(--border-focus);
+}
+
+/* Clear Button */
+.wbs-filter-clear-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.wbs-filter-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.5);
+}
