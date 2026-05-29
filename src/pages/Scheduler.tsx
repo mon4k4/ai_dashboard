@@ -50,18 +50,30 @@ export default function Scheduler() {
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
 
-  // 本日スクロール用の参照とフラグ
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // 左右パネルの独立スクロール用参照
+  const leftScrollRef = useRef<HTMLDivElement>(null);
+  const rightScrollRef = useRef<HTMLDivElement>(null);
   const hasScrolledToToday = useRef(false);
 
-  // WBSドラッグ中の水平スクロールロック用
-  const wbsScrollLock = useRef<{ locked: boolean; scrollLeft: number }>({ locked: false, scrollLeft: 0 });
+  // 垂直スクロール同期（無限ループ防止用ガード）
+  const scrollSyncSource = useRef<'left' | 'right' | null>(null);
 
-  const lockHorizontalScroll = () => {
-    if (!scrollContainerRef.current) return;
-    if (wbsScrollLock.current.locked) {
-      scrollContainerRef.current.scrollLeft = wbsScrollLock.current.scrollLeft;
+  const handleLeftPanelScroll = () => {
+    if (scrollSyncSource.current === 'right') return;
+    scrollSyncSource.current = 'left';
+    if (rightScrollRef.current && leftScrollRef.current) {
+      rightScrollRef.current.scrollTop = leftScrollRef.current.scrollTop;
     }
+    requestAnimationFrame(() => { scrollSyncSource.current = null; });
+  };
+
+  const handleRightPanelScroll = () => {
+    if (scrollSyncSource.current === 'left') return;
+    scrollSyncSource.current = 'right';
+    if (leftScrollRef.current && rightScrollRef.current) {
+      leftScrollRef.current.scrollTop = rightScrollRef.current.scrollTop;
+    }
+    requestAnimationFrame(() => { scrollSyncSource.current = null; });
   };
 
   const handleResizeStart = (e: React.PointerEvent) => {
@@ -170,16 +182,16 @@ export default function Scheduler() {
     return list;
   }, [minDate, maxDate]);
 
-  // 本日（Today）基準への初回マウント時のスクロール調整
+  // 本日（Today）基準への初回マウント時のスクロール調整（右パネルのみ）
   useEffect(() => {
-    if (scrollContainerRef.current && !hasScrolledToToday.current && days.length > 0) {
+    if (rightScrollRef.current && !hasScrolledToToday.current && days.length > 0) {
       const scrollTimer = setTimeout(() => {
-        if (scrollContainerRef.current) {
+        if (rightScrollRef.current) {
           const todayIndex = days.indexOf(todayStr);
           if (todayIndex !== -1) {
             const todayX = todayIndex * DAY_WIDTH;
-            const container = scrollContainerRef.current;
-            const timelineAreaWidth = container.clientWidth - leftColumnWidth;
+            const container = rightScrollRef.current;
+            const timelineAreaWidth = container.clientWidth;
             container.scrollLeft = Math.max(0, todayX - (timelineAreaWidth / 2));
             hasScrolledToToday.current = true;
           }
@@ -187,7 +199,7 @@ export default function Scheduler() {
       }, 50);
       return () => clearTimeout(scrollTimer);
     }
-  }, [days, todayStr, leftColumnWidth]);
+  }, [days, todayStr]);
 
   // 全プロジェクトのミーティングを日付ごとに集計 (重複チェック用)
   const allMeetingsByDate = useMemo(() => {
@@ -316,21 +328,8 @@ export default function Scheduler() {
  
     return groups;
   }, [tasks, projects, showOnlyMine, hideCompleted, myMemberId, collapsedTaskIds, collapsedProjectIds]);
-  // WBSドラッグ開始ハンドラ - 水平スクロールをロック
-  const handleWbsDragStart = () => {
-    if (scrollContainerRef.current) {
-      wbsScrollLock.current = { locked: true, scrollLeft: scrollContainerRef.current.scrollLeft };
-      scrollContainerRef.current.addEventListener('scroll', lockHorizontalScroll);
-    }
-  };
-
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
-    // 水平スクロールロックを解除
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.removeEventListener('scroll', lockHorizontalScroll);
-    }
-    wbsScrollLock.current.locked = false;
 
     const { destination, source } = result;
     if (!destination) return;
@@ -585,13 +584,12 @@ export default function Scheduler() {
         </div>
       </div>
 
-      <div className="glass-panel" ref={scrollContainerRef} style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-        <div style={{ display: 'flex', minWidth: 'max-content' }}>
+      <div className="glass-panel" style={{ flex: 1, overflow: 'hidden', display: 'flex', position: 'relative' }}>
           
-          {/* 左側: タスクリスト (横スクロール時も固定) */}
-          <div style={{ width: `${leftColumnWidth}px`, position: 'sticky', left: 0, zIndex: 20, background: 'var(--bg-main)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
-            {/* 左側ヘッダー (縦スクロール時も固定) */}
-            <div style={{ height: '60px', position: 'sticky', top: 0, zIndex: 30, borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', padding: '0 1rem', background: 'var(--bg-main)' }}>
+          {/* 左側: タスクリスト（独立した垂直スクロールのみ） */}
+          <div style={{ width: `${leftColumnWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', borderRight: '1px solid var(--border-color)', position: 'relative' }}>
+            {/* 左側ヘッダー */}
+            <div style={{ height: '60px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', padding: '0 1rem', background: 'var(--bg-main)', flexShrink: 0 }}>
               <span style={{ fontWeight: 'bold' }}>プロジェクト / タスク</span>
             </div>
 
@@ -618,7 +616,9 @@ export default function Scheduler() {
                 if (!isResizing) e.currentTarget.style.background = 'transparent';
               }}
             />
-            <div style={{ flex: 1 }}>
+
+            {/* スクロール可能なタスクリスト領域（垂直のみ、水平スクロールなし） */}
+            <div ref={leftScrollRef} onScroll={handleLeftPanelScroll} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
               {groupedTasks.map(group => {
                 const isProjectCollapsed = collapsedProjectIds[group.projectId || 'unassigned'];
                 const projectIndex = group.projectId ? projects.findIndex(p => p.id === group.projectId) : -1;
@@ -703,7 +703,7 @@ export default function Scheduler() {
                       )}
                     </div>
                   
-                  <DragDropContext onDragStart={handleWbsDragStart} onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>
+                  <DragDropContext onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>
                     <Droppable droppableId={`wbs-list-${group.projectId || 'unassigned'}`}>
                       {(provided) => (
                         <div
@@ -817,8 +817,9 @@ export default function Scheduler() {
             </div>
           </div>
 
-          {/* 右側: ガントチャート (タイムライン) */}
-          <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          {/* 右側: ガントチャート (タイムライン) - 独立した水平・垂直スクロール */}
+          <div ref={rightScrollRef} onScroll={handleRightPanelScroll} style={{ flex: 1, overflow: 'auto' }}>
+          <div style={{ minWidth: 'max-content' }}>
           {/* 日付・月ヘッダー (縦スクロール時も固定) */}
           <div style={{ display: 'flex', flexDirection: 'column', height: '60px', position: 'sticky', top: 0, zIndex: 10, borderBottom: '1px solid var(--border-color)', background: 'var(--bg-main)' }}>
             
