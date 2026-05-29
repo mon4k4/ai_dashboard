@@ -8,6 +8,7 @@ export default function Settings() {
   const [llmStreaming, setLlmStreaming] = useState(true);
   const [imageDir, setImageDir] = useState('/Users/monaka/Pictures/Screenshots');
   const [minutesDir, setMinutesDir] = useState('./議事録一覧');
+  const [wbsExcelOutputDir, setWbsExcelOutputDir] = useState('./exports');
   const [reportTemplatePath, setReportTemplatePath] = useState('');
   const [myName, setMyName] = useState('');
   const [monthlyWorkload, setMonthlyWorkload] = useState('155');
@@ -20,6 +21,7 @@ export default function Settings() {
     setLlmStreaming(settings.llmStreaming !== 'false');
     if (settings.imageDir) setImageDir(settings.imageDir);
     if (settings.minutesDir) setMinutesDir(settings.minutesDir);
+    if (settings.wbsExcelOutputDir) setWbsExcelOutputDir(settings.wbsExcelOutputDir);
     if (settings.reportTemplatePath) setReportTemplatePath(settings.reportTemplatePath);
     if (settings.myName) setMyName(settings.myName);
     if (settings.monthlyWorkload) setMonthlyWorkload(settings.monthlyWorkload);
@@ -32,6 +34,7 @@ export default function Settings() {
       llmStreaming: String(llmStreaming),
       imageDir,
       minutesDir,
+      wbsExcelOutputDir,
       reportTemplatePath,
       myName,
       monthlyWorkload,
@@ -52,8 +55,8 @@ export default function Settings() {
             <Server size={18} />
             ローカルLLM API エンドポイント (OpenAI互換)
           </label>
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={llmEndpoint}
             onChange={(e) => setLlmEndpoint(e.target.value)}
             placeholder="http://localhost:8080/v1"
@@ -103,6 +106,21 @@ export default function Settings() {
             style={styles.input}
           />
           <p style={styles.helpText}>自動一括処理で読み込む、未処理の議事録ファイル（.txt / .vtt）が格納されたディレクトリを指定してください。</p>
+        </div>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            <Folder size={18} />
+            WBS Excel出力先ディレクトリ
+          </label>
+          <input
+            type="text"
+            value={wbsExcelOutputDir}
+            onChange={(e) => setWbsExcelOutputDir(e.target.value)}
+            placeholder="/Users/username/Projects/05_pj_dashboard/exports"
+            style={styles.input}
+          />
+          <p style={styles.helpText}>WBS画面のExcel出力で保存するディレクトリパスを指定してください。相対パスはプロジェクトフォルダ基準です。</p>
         </div>
 
         <div style={styles.formGroup}>

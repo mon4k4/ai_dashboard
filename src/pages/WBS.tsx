@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, Edit2, ChevronDown, Calendar, Users, FolderTree, Filter } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Plus, Trash2, Edit2, ChevronDown, Calendar, Users, FolderTree, Filter, Download } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -11,7 +11,7 @@ interface TaskNode {
 }
 
 export default function WBS() {
-  const { tasks, projects, members, addTask, updateTask, deleteTask } = useAppContext();
+  const { tasks, projects, members, settings, addTask, updateTask, deleteTask } = useAppContext();
   
   // アクティブなプロジェクトID
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
@@ -20,6 +20,7 @@ export default function WBS() {
     }
     return null;
   });
+  const hasUserSelectedProject = useRef(false);
 
   // 折りたたみ状態 (localStorageに保存)
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>(() => {
@@ -33,6 +34,9 @@ export default function WBS() {
 
   // 詳細編集中のタスクID
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [exportError, setExportError] = useState('');
 
   // フィルター状態
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
@@ -40,6 +44,11 @@ export default function WBS() {
 
   // プロジェクト一覧に変化があった場合の安全なフォールバック
   useEffect(() => {
+    if (!hasUserSelectedProject.current && activeProjectId === null && projects.length > 0) {
+      setActiveProjectId(projects[0].id);
+      return;
+    }
+
     if (activeProjectId && !projects.some(p => p.id === activeProjectId) && activeProjectId !== 'unassigned') {
       if (projects.length > 0) {
         setActiveProjectId(projects[0].id);
@@ -111,6 +120,35 @@ export default function WBS() {
         localStorage.setItem('wbsCollapsedTaskIds', JSON.stringify(next));
         return next;
       });
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setIsExportingExcel(true);
+    setExportMessage('');
+    setExportError('');
+
+    try {
+      const res = await fetch('/api/wbs/export-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: activeProjectId,
+          tasks,
+          projects,
+          members,
+          outputDir: settings.wbsExcelOutputDir || './exports',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Excel出力に失敗しました');
+      }
+      setExportMessage(`Excel出力しました: ${data.filePath}`);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Excel出力に失敗しました');
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -430,11 +468,27 @@ export default function WBS() {
           </div>
         </div>
 
-        <button className="btn-primary" onClick={handleAddGroup}>
-          <Plus size={18} />
-          <span>グループ（親タスク）を追加</span>
-        </button>
+        <div className="wbs-header-actions">
+          <button
+            className="btn-secondary wbs-export-btn"
+            onClick={handleExportExcel}
+            disabled={isExportingExcel || filteredTasks.length === 0}
+          >
+            <Download size={18} />
+            <span>{isExportingExcel ? '出力中...' : '表示中プロジェクトをExcel出力'}</span>
+          </button>
+          <button className="btn-primary" onClick={handleAddGroup}>
+            <Plus size={18} />
+            <span>グループ（親タスク）を追加</span>
+          </button>
+        </div>
       </div>
+
+      {(exportMessage || exportError) && (
+        <div className={`wbs-export-status ${exportError ? 'is-error' : 'is-success'}`}>
+          {exportError || exportMessage}
+        </div>
+      )}
 
       {/* プロジェクトタブ選択部 */}
       <div className="wbs-tab-container">
@@ -444,7 +498,10 @@ export default function WBS() {
             <button
               key={proj.id}
               className="wbs-tab"
-              onClick={() => setActiveProjectId(proj.id)}
+              onClick={() => {
+                hasUserSelectedProject.current = true;
+                setActiveProjectId(proj.id);
+              }}
               style={{
                 ...(isActive ? {
                   borderBottom: `3px solid ${proj.color || 'var(--accent-primary)'}`,
@@ -471,7 +528,10 @@ export default function WBS() {
         <button
           key="unassigned"
           className="wbs-tab"
-          onClick={() => setActiveProjectId(null)}
+          onClick={() => {
+            hasUserSelectedProject.current = true;
+            setActiveProjectId(null);
+          }}
           style={{
             ...(activeProjectId === null ? {
               borderBottom: `3px solid var(--text-muted)`,

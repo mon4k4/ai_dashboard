@@ -660,6 +660,611 @@ function parseBody(req) {
   });
 }
 
+// ====== WBS Excel Export (.xlsx / OOXML) ======
+function escapeXml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function columnName(index) {
+  let name = '';
+  let n = index;
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    name = String.fromCharCode(65 + rem) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+}
+
+function parseDateParts(dateStr) {
+  const match = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return null;
+  return { y, m, d, date };
+}
+
+function excelDateSerial(dateStr) {
+  const parts = parseDateParts(dateStr);
+  if (!parts) return null;
+  const epoch = Date.UTC(1899, 11, 30);
+  return Math.round((parts.date.getTime() - epoch) / 86400000);
+}
+
+function addDaysToDateString(dateStr, days) {
+  const parts = parseDateParts(dateStr);
+  if (!parts) return '';
+  const date = new Date(parts.date.getTime());
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function isWeekend(dateStr) {
+  const parts = parseDateParts(dateStr);
+  if (!parts) return false;
+  const day = parts.date.getUTCDay();
+  return day === 0 || day === 6;
+}
+
+function buildDateRange(startDate, endDate) {
+  const days = [];
+  let current = startDate;
+  let guard = 0;
+  while (current && current <= endDate && guard < 2000) {
+    days.push(current);
+    current = addDaysToDateString(current, 1);
+    guard++;
+  }
+  return days;
+}
+
+function compareWbsTasks(a, b) {
+  const aOrder = a.wbsOrder !== undefined ? a.wbsOrder : 999999;
+  const bOrder = b.wbsOrder !== undefined ? b.wbsOrder : 999999;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+  return String(a.id || '').localeCompare(String(b.id || ''));
+}
+
+function collectDateBounds(project, projectTasks) {
+  const dateValues = [];
+  if (project?.startDate && parseDateParts(project.startDate)) dateValues.push(project.startDate);
+  if (project?.endDate && parseDateParts(project.endDate)) dateValues.push(project.endDate);
+  projectTasks.forEach(task => {
+    if (task.startDate && parseDateParts(task.startDate)) dateValues.push(task.startDate);
+    if (task.dueDate && parseDateParts(task.dueDate)) dateValues.push(task.dueDate);
+  });
+
+  if (dateValues.length === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    return { startDate: today, endDate: addDaysToDateString(today, 30) };
+  }
+
+  dateValues.sort();
+  const startDate = dateValues[0];
+  const endDate = dateValues[dateValues.length - 1];
+  return startDate <= endDate ? { startDate, endDate } : { startDate: endDate, endDate: startDate };
+}
+
+function buildWbsExportRows(projectTasks, members) {
+  const memberMap = new Map((members || []).map(m => [m.id, m.name]));
+  const taskMap = new Map();
+  const roots = [];
+
+  projectTasks.forEach(task => {
+    taskMap.set(task.id, { task, children: [] });
+  });
+
+  projectTasks.forEach(task => {
+    const node = taskMap.get(task.id);
+    if (task.parentId && taskMap.has(task.parentId)) {
+      taskMap.get(task.parentId).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const sortNodes = nodes => {
+    nodes.sort((a, b) => compareWbsTasks(a.task, b.task));
+    nodes.forEach(node => sortNodes(node.children));
+  };
+  sortNodes(roots);
+
+  const rows = [];
+  const assigneeFor = task => task.assignee || memberMap.get(task.memberId) || '';
+  const normalizeStatus = status => ['todo', 'in-progress', 'done'].includes(status) ? status : 'todo';
+  const childTitle = (title, depth) => {
+    const prefix = depth > 0 ? `${'　'.repeat(Math.max(0, depth - 1))}└ ` : '';
+    return `${prefix}${title || ''}`;
+  };
+
+  const pushNode = (node, parentTitle, depth, isGroupRoot = false) => {
+    rows.push({
+      parentTitle,
+      taskTitle: isGroupRoot ? '（親グループ）' : childTitle(node.task.title, depth),
+      assignee: assigneeFor(node.task),
+      startDate: node.task.startDate || '',
+      dueDate: node.task.dueDate || '',
+      status: normalizeStatus(node.task.status),
+      isGroupRoot,
+    });
+    node.children.forEach(child => pushNode(child, parentTitle, depth + 1, false));
+  };
+
+  roots.forEach(root => {
+    if (root.children.length > 0) {
+      pushNode(root, root.task.title || '', 0, true);
+    } else {
+      pushNode(root, 'その他タスク（グループ未分類）', 0, false);
+    }
+  });
+
+  if (rows.length === 0) {
+    rows.push({
+      parentTitle: '（タスクなし）',
+      taskTitle: '',
+      assignee: '',
+      startDate: '',
+      dueDate: '',
+      status: 'todo',
+      isGroupRoot: false,
+    });
+  }
+
+  return rows;
+}
+
+function textCell(ref, value, style = 0) {
+  if (value === undefined || value === null || value === '') return `<c r="${ref}" s="${style}"/>`;
+  const text = String(value);
+  const preserve = /^\s|\s$/.test(text) ? ' xml:space="preserve"' : '';
+  return `<c r="${ref}" s="${style}" t="inlineStr"><is><t${preserve}>${escapeXml(text)}</t></is></c>`;
+}
+
+function numberCell(ref, value, style = 0) {
+  if (value === undefined || value === null || value === '') return `<c r="${ref}" s="${style}"/>`;
+  return `<c r="${ref}" s="${style}"><v>${value}</v></c>`;
+}
+
+function dateCell(ref, dateStr, style = 6) {
+  const serial = excelDateSerial(dateStr);
+  return serial === null ? `<c r="${ref}" s="${style}"/>` : numberCell(ref, serial, style);
+}
+
+function buildStylesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="2">
+    <numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>
+    <numFmt numFmtId="165" formatCode="m/d"/>
+  </numFmts>
+  <fonts count="4">
+    <font><sz val="11"/><color rgb="FF111827"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="14"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FF111827"/><name val="Calibri"/><family val="2"/></font>
+    <font><sz val="9"/><color rgb="FF4B5563"/><name val="Calibri"/><family val="2"/></font>
+  </fonts>
+  <fills count="6">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD9EAF7"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="3">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD9E2EC"/></left>
+      <right style="thin"><color rgb="FFD9E2EC"/></right>
+      <top style="thin"><color rgb="FFD9E2EC"/></top>
+      <bottom style="thin"><color rgb="FFD9E2EC"/></bottom>
+      <diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FFE5E7EB"/></left>
+      <right style="thin"><color rgb="FFE5E7EB"/></right>
+      <top style="thin"><color rgb="FFF3F4F6"/></top>
+      <bottom style="thin"><color rgb="FFF3F4F6"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="12">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="165" fontId="2" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="165" fontId="2" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1"/>
+    <xf numFmtId="0" fontId="0" fillId="4" borderId="2" xfId="0" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+  <dxfs count="4">
+    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF93C5FD"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFCD34D"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF86EFAC"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><border><left style="medium"><color rgb="FFEF4444"/></left><right style="medium"><color rgb="FFEF4444"/></right></border></dxf>
+  </dxfs>
+  <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
+</styleSheet>`;
+}
+
+function buildWorksheetXml(projectName, rows, days) {
+  const timelineStartCol = 6;
+  const statusColIndex = timelineStartCol + days.length;
+  const lastTimelineCol = statusColIndex - 1;
+  const lastTimelineColName = columnName(lastTimelineCol);
+  const statusColName = columnName(statusColIndex);
+  const lastDataRow = rows.length + 3;
+  const dimension = `A1:${statusColName}${lastDataRow}`;
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+
+  const monthGroups = [];
+  days.forEach((day, index) => {
+    const key = day.slice(0, 7);
+    const existing = monthGroups[monthGroups.length - 1];
+    if (!existing || existing.key !== key) {
+      monthGroups.push({ key, startIndex: index, endIndex: index });
+    } else {
+      existing.endIndex = index;
+    }
+  });
+
+  const xmlRows = [];
+  const row1Cells = [
+    textCell('A1', `プロジェクト: ${projectName}`, 1),
+    textCell('B1', '', 1),
+    textCell('C1', '', 1),
+    textCell('D1', '', 1),
+    textCell('E1', '', 1),
+  ];
+  days.forEach((day, index) => {
+    const col = columnName(timelineStartCol + index);
+    const isMonthStart = monthGroups.some(group => group.startIndex === index);
+    const label = isMonthStart ? `${Number(day.slice(0, 4))}年${Number(day.slice(5, 7))}月` : '';
+    row1Cells.push(textCell(`${col}1`, label, 2));
+  });
+  row1Cells.push(textCell(`${statusColName}1`, 'status', 2));
+  xmlRows.push(`<row r="1" ht="26" customHeight="1">${row1Cells.join('')}</row>`);
+
+  const row2Cells = [
+    textCell('A2', '親グループ', 2),
+    textCell('B2', '配下タスク', 2),
+    textCell('C2', '担当者', 2),
+    textCell('D2', '開始日', 2),
+    textCell('E2', '終了日', 2),
+  ];
+  days.forEach((day, index) => {
+    const col = columnName(timelineStartCol + index);
+    row2Cells.push(dateCell(`${col}2`, day, isWeekend(day) ? 4 : 3));
+  });
+  row2Cells.push(textCell(`${statusColName}2`, 'status', 2));
+  xmlRows.push(`<row r="2" ht="24" customHeight="1">${row2Cells.join('')}</row>`);
+
+  const row3Cells = [
+    textCell('A3', '', 2),
+    textCell('B3', '', 2),
+    textCell('C3', '', 2),
+    textCell('D3', '', 2),
+    textCell('E3', '', 2),
+  ];
+  days.forEach((day, index) => {
+    const col = columnName(timelineStartCol + index);
+    const parts = parseDateParts(day);
+    const weekday = parts ? weekdays[parts.date.getUTCDay()] : '';
+    row3Cells.push(textCell(`${col}3`, weekday, isWeekend(day) ? 11 : 10));
+  });
+  row3Cells.push(textCell(`${statusColName}3`, 'status', 2));
+  xmlRows.push(`<row r="3" ht="18" customHeight="1">${row3Cells.join('')}</row>`);
+
+  rows.forEach((item, index) => {
+    const rowNumber = index + 4;
+    const rowStyle = item.isGroupRoot ? 7 : 5;
+    const cells = [
+      textCell(`A${rowNumber}`, item.parentTitle, rowStyle),
+      textCell(`B${rowNumber}`, item.taskTitle, rowStyle),
+      textCell(`C${rowNumber}`, item.assignee, 5),
+      dateCell(`D${rowNumber}`, item.startDate, 6),
+      dateCell(`E${rowNumber}`, item.dueDate, 6),
+    ];
+    days.forEach((day, dayIndex) => {
+      const col = columnName(timelineStartCol + dayIndex);
+      cells.push(textCell(`${col}${rowNumber}`, '', isWeekend(day) ? 9 : 8));
+    });
+    cells.push(textCell(`${statusColName}${rowNumber}`, item.status, 5));
+    xmlRows.push(`<row r="${rowNumber}" ht="22" customHeight="1">${cells.join('')}</row>`);
+  });
+
+  const merges = ['A1:E1'];
+  monthGroups.forEach(group => {
+    const startCol = columnName(timelineStartCol + group.startIndex);
+    const endCol = columnName(timelineStartCol + group.endIndex);
+    if (startCol !== endCol) merges.push(`${startCol}1:${endCol}1`);
+  });
+
+  const timelineRange = `${columnName(timelineStartCol)}4:${lastTimelineColName}${lastDataRow}`;
+  const cfRules = [
+    { dxfId: 0, formula: `AND($D4<>"",$E4<>"",${columnName(timelineStartCol)}$2>=$D4,${columnName(timelineStartCol)}$2<=$E4,$${statusColName}4="todo")` },
+    { dxfId: 1, formula: `AND($D4<>"",$E4<>"",${columnName(timelineStartCol)}$2>=$D4,${columnName(timelineStartCol)}$2<=$E4,$${statusColName}4="in-progress")` },
+    { dxfId: 2, formula: `AND($D4<>"",$E4<>"",${columnName(timelineStartCol)}$2>=$D4,${columnName(timelineStartCol)}$2<=$E4,$${statusColName}4="done")` },
+    { dxfId: 3, formula: `${columnName(timelineStartCol)}$2=TODAY()` },
+  ];
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="${dimension}"/>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane xSplit="5" ySplit="3" topLeftCell="F4" activePane="bottomRight" state="frozen"/>
+      <selection pane="topRight" activeCell="F2" sqref="F2"/>
+      <selection pane="bottomLeft" activeCell="A4" sqref="A4"/>
+      <selection pane="bottomRight" activeCell="F4" sqref="F4"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="18"/>
+  <cols>
+    <col min="1" max="1" width="28" customWidth="1"/>
+    <col min="2" max="2" width="44" customWidth="1"/>
+    <col min="3" max="3" width="18" customWidth="1"/>
+    <col min="4" max="5" width="13" customWidth="1"/>
+    <col min="6" max="${lastTimelineCol}" width="4.2" customWidth="1"/>
+    <col min="${statusColIndex}" max="${statusColIndex}" width="12" hidden="1" customWidth="1"/>
+  </cols>
+  <sheetData>${xmlRows.join('')}</sheetData>
+  <autoFilter ref="A2:E${lastDataRow}"/>
+  <mergeCells count="${merges.length}">${merges.map(ref => `<mergeCell ref="${ref}"/>`).join('')}</mergeCells>
+  <conditionalFormatting sqref="${timelineRange}">
+    ${cfRules.map((rule, index) => `<cfRule type="expression" dxfId="${rule.dxfId}" priority="${index + 1}"><formula>${escapeXml(rule.formula)}</formula></cfRule>`).join('')}
+  </conditionalFormatting>
+  <dataValidations count="1">
+    <dataValidation type="date" allowBlank="1" showErrorMessage="1" errorTitle="日付形式エラー" error="開始日・終了日は日付で入力してください。" sqref="D4:E${lastDataRow}" operator="between">
+      <formula1>DATE(1900,1,1)</formula1>
+      <formula2>DATE(9999,12,31)</formula2>
+    </dataValidation>
+  </dataValidations>
+  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+</worksheet>`;
+}
+
+function buildWorkbookXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews><workbookView xWindow="0" yWindow="0" windowWidth="18000" windowHeight="12000"/></bookViews>
+  <sheets><sheet name="WBS" sheetId="1" r:id="rId1"/></sheets>
+  <calcPr calcId="171027" fullCalcOnLoad="1" forceFullCalc="1"/>
+</workbook>`;
+}
+
+function buildWorkbookRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+}
+
+function buildRootRelsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+}
+
+function buildContentTypesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+}
+
+function buildCorePropsXml(projectName) {
+  const now = new Date().toISOString();
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${escapeXml(projectName)} WBS</dc:title>
+  <dc:creator>05_pj_dashboard</dc:creator>
+  <cp:lastModifiedBy>05_pj_dashboard</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
+</cp:coreProperties>`;
+}
+
+function buildAppPropsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>05_pj_dashboard</Application>
+  <DocSecurity>0</DocSecurity>
+  <ScaleCrop>false</ScaleCrop>
+  <HeadingPairs>
+    <vt:vector size="2" baseType="variant">
+      <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
+      <vt:variant><vt:i4>1</vt:i4></vt:variant>
+    </vt:vector>
+  </HeadingPairs>
+  <TitlesOfParts>
+    <vt:vector size="1" baseType="lpstr"><vt:lpstr>WBS</vt:lpstr></vt:vector>
+  </TitlesOfParts>
+  <Company></Company>
+  <LinksUpToDate>false</LinksUpToDate>
+  <SharedDoc>false</SharedDoc>
+  <HyperlinksChanged>false</HyperlinksChanged>
+  <AppVersion>16.0300</AppVersion>
+</Properties>`;
+}
+
+function crc32(buffer) {
+  if (!crc32.table) {
+    crc32.table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) {
+        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      crc32.table[i] = c >>> 0;
+    }
+  }
+  let crc = 0xFFFFFFFF;
+  for (const byte of buffer) {
+    crc = crc32.table[(crc ^ byte) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const year = Math.max(1980, date.getFullYear());
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { dosTime, dosDate };
+}
+
+function createZip(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const { dosTime, dosDate } = dosDateTime();
+
+  entries.forEach(entry => {
+    const nameBuffer = Buffer.from(entry.name, 'utf8');
+    const dataBuffer = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data, 'utf8');
+    const crc = crc32(dataBuffer);
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0x0800, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(dosTime, 10);
+    localHeader.writeUInt16LE(dosDate, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(dataBuffer.length, 18);
+    localHeader.writeUInt32LE(dataBuffer.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    localParts.push(localHeader, nameBuffer, dataBuffer);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0x0800, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(dosTime, 12);
+    centralHeader.writeUInt16LE(dosDate, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(dataBuffer.length, 20);
+    centralHeader.writeUInt32LE(dataBuffer.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralParts.push(centralHeader, nameBuffer);
+    offset += localHeader.length + nameBuffer.length + dataBuffer.length;
+  });
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function sanitizeFileName(value) {
+  return String(value || 'WBS')
+    .split('')
+    .map(ch => {
+      const code = ch.charCodeAt(0);
+      return code < 32 || '<>:"/\\|?*'.includes(ch) ? '_' : ch;
+    })
+    .join('')
+    .replace(/\s+/g, '_')
+    .slice(0, 80) || 'WBS';
+}
+
+function buildWbsWorkbookBuffer({ projectId, tasks = [], projects = [], members = [] }) {
+  const normalizedProjectId = projectId === 'unassigned' ? null : projectId;
+  const project = normalizedProjectId ? projects.find(p => p.id === normalizedProjectId) : null;
+  if (normalizedProjectId && !project) {
+    throw new Error('指定されたプロジェクトが見つかりません。');
+  }
+
+  const projectName = project?.name || '未分類';
+  const projectTasks = tasks
+    .filter(task => !task.isNew)
+    .filter(task => normalizedProjectId ? task.projectId === normalizedProjectId : !task.projectId);
+  const rows = buildWbsExportRows(projectTasks, members);
+  const { startDate, endDate } = collectDateBounds(project, projectTasks);
+  const days = buildDateRange(startDate, endDate);
+  const worksheetXml = buildWorksheetXml(projectName, rows, days);
+
+  return createZip([
+    { name: '[Content_Types].xml', data: buildContentTypesXml() },
+    { name: '_rels/.rels', data: buildRootRelsXml() },
+    { name: 'docProps/core.xml', data: buildCorePropsXml(projectName) },
+    { name: 'docProps/app.xml', data: buildAppPropsXml() },
+    { name: 'xl/workbook.xml', data: buildWorkbookXml() },
+    { name: 'xl/_rels/workbook.xml.rels', data: buildWorkbookRelsXml() },
+    { name: 'xl/styles.xml', data: buildStylesXml() },
+    { name: 'xl/worksheets/sheet1.xml', data: worksheetXml },
+  ]);
+}
+
+function resolveWbsOutputDir(requestedOutputDir) {
+  if (requestedOutputDir && String(requestedOutputDir).trim()) {
+    return path.isAbsolute(requestedOutputDir)
+      ? requestedOutputDir
+      : path.resolve(process.cwd(), requestedOutputDir);
+  }
+
+  const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (settings.wbsExcelOutputDir) {
+        return path.isAbsolute(settings.wbsExcelOutputDir)
+          ? settings.wbsExcelOutputDir
+          : path.resolve(process.cwd(), settings.wbsExcelOutputDir);
+      }
+    } catch (e) {
+      debugLog(`[wbs-export] Failed to read settings: ${e.message}`);
+    }
+  }
+
+  return path.join(process.cwd(), 'exports');
+}
+
 // ====== Vite Plugin ======
 function backendPlugin() {
   return {
@@ -723,6 +1328,36 @@ function backendPlugin() {
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ output: result.output, thinking: result.thinking }));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
+          return;
+        }
+
+        // WBS Excel Export
+        if (req.url === '/api/wbs/export-excel' && req.method === 'POST') {
+          try {
+            const body = await parseBody(req);
+            const outputDir = resolveWbsOutputDir(body.outputDir);
+            fs.mkdirSync(outputDir, { recursive: true });
+
+            const projectId = body.projectId === 'unassigned' ? null : body.projectId;
+            const project = projectId ? (body.projects || []).find(p => p.id === projectId) : null;
+            const projectName = project?.name || '未分類';
+            const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '_');
+            const filePath = path.join(outputDir, `WBS_${sanitizeFileName(projectName)}_${timestamp}.xlsx`);
+            const workbookBuffer = buildWbsWorkbookBuffer({
+              projectId,
+              tasks: body.tasks || [],
+              projects: body.projects || [],
+              members: body.members || [],
+            });
+
+            fs.writeFileSync(filePath, workbookBuffer);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, filePath }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e.message }));
+          }
           return;
         }
         
