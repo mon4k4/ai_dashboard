@@ -169,6 +169,20 @@ export default function WBS() {
     return roots;
   }, [filteredTasks]);
 
+  // 子タスクを持つグループ（roots）と、持たない独立したタスク（singles）を分割
+  const { groupRoots, singleRoots } = useMemo(() => {
+    const groups: TaskNode[] = [];
+    const singles: TaskNode[] = [];
+    wbsTree.forEach(node => {
+      if (node.children.length > 0) {
+        groups.push(node);
+      } else {
+        singles.push(node);
+      }
+    });
+    return { groupRoots: groups, singleRoots: singles };
+  }, [wbsTree]);
+
   // 再帰的なノード描画
   const renderTaskNode = (node: TaskNode, depth: number = 0): React.ReactNode => {
     const { task, children } = node;
@@ -190,11 +204,12 @@ export default function WBS() {
     };
 
     const statusStyle = getStatusStyles(task.status);
+    const isGroupRoot = depth === 0 && hasChildren;
 
     return (
       <div key={task.id} style={{ display: 'flex', flexDirection: 'column' }}>
         {/* タスク行の本体 */}
-        <div className={`wbs-task-row ${depth === 0 ? 'wbs-parent-row' : ''}`}>
+        <div className={`wbs-task-row ${isGroupRoot ? 'wbs-parent-row' : ''}`}>
           <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '0.5rem', minWidth: 0 }}>
             {/* インデントの幅と縦ライン */}
             {Array.from({ length: depth }).map((_, i) => (
@@ -479,12 +494,25 @@ export default function WBS() {
               </div>
             </div>
             {/* WBSツリー本体 */}
-            <div className="wbs-tree-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {wbsTree.map(node => (
+            <div className="wbs-tree-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* 子タスクを持つグループのカード表示 */}
+              {groupRoots.map(node => (
                 <div key={node.task.id} className="wbs-group-card">
                   {renderTaskNode(node, 0)}
                 </div>
               ))}
+
+              {/* 親がなく、子もない独立したタスクを「その他」として一括カード表示 */}
+              {singleRoots.length > 0 && (
+                <div className="wbs-group-card wbs-other-group-card">
+                  <div className="wbs-other-group-header">
+                    <span className="wbs-other-group-title">その他タスク（グループ未分類）</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {singleRoots.map(node => renderTaskNode(node, 0))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

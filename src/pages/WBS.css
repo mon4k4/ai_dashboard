@@ -306,8 +306,8 @@
   background: rgba(255, 255, 255, 0.015);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 1.25rem;
-  margin-bottom: 1.25rem;
+  padding: 1rem;
+  margin-bottom: 0;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   transition: all 0.25s ease;
 }
@@ -328,4 +328,31 @@
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* Other Group Card (ungrouped tasks catch-all) */
+.wbs-other-group-card {
+  border: 1px dashed rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.005) !important;
+}
+
+.wbs-other-group-card:hover {
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  background: rgba(255, 255, 255, 0.01) !important;
+}
+
+.wbs-other-group-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.wbs-other-group-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
