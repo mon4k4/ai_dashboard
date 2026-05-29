@@ -194,7 +194,7 @@ export default function WBS() {
     return (
       <div key={task.id} style={{ display: 'flex', flexDirection: 'column' }}>
         {/* タスク行の本体 */}
-        <div className="wbs-task-row">
+        <div className={`wbs-task-row ${depth === 0 ? 'wbs-parent-row' : ''}`}>
           <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '0.5rem', minWidth: 0 }}>
             {/* インデントの幅と縦ライン */}
             {Array.from({ length: depth }).map((_, i) => (
@@ -479,8 +479,12 @@ export default function WBS() {
               </div>
             </div>
             {/* WBSツリー本体 */}
-            <div className="wbs-tree-body">
-              {wbsTree.map(node => renderTaskNode(node, 0))}
+            <div className="wbs-tree-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {wbsTree.map(node => (
+                <div key={node.task.id} className="wbs-group-card">
+                  {renderTaskNode(node, 0)}
+                </div>
+              ))}
             </div>
           </div>
         )}
