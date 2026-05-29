@@ -54,6 +54,16 @@ export default function Scheduler() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasScrolledToToday = useRef(false);
 
+  // WBSドラッグ中の水平スクロールロック用
+  const wbsScrollLock = useRef<{ locked: boolean; scrollLeft: number }>({ locked: false, scrollLeft: 0 });
+
+  const lockHorizontalScroll = () => {
+    if (!scrollContainerRef.current) return;
+    if (wbsScrollLock.current.locked) {
+      scrollContainerRef.current.scrollLeft = wbsScrollLock.current.scrollLeft;
+    }
+  };
+
   const handleResizeStart = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -306,8 +316,22 @@ export default function Scheduler() {
  
     return groups;
   }, [tasks, projects, showOnlyMine, hideCompleted, myMemberId, collapsedTaskIds, collapsedProjectIds]);
+  // WBSドラッグ開始ハンドラ - 水平スクロールをロック
+  const handleWbsDragStart = () => {
+    if (scrollContainerRef.current) {
+      wbsScrollLock.current = { locked: true, scrollLeft: scrollContainerRef.current.scrollLeft };
+      scrollContainerRef.current.addEventListener('scroll', lockHorizontalScroll);
+    }
+  };
+
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
+    // 水平スクロールロックを解除
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.removeEventListener('scroll', lockHorizontalScroll);
+    }
+    wbsScrollLock.current.locked = false;
+
     const { destination, source } = result;
     if (!destination) return;
     if (destination.index === source.index) return;
@@ -679,7 +703,7 @@ export default function Scheduler() {
                       )}
                     </div>
                   
-                  <DragDropContext onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>
+                  <DragDropContext onDragStart={handleWbsDragStart} onDragEnd={(result) => handleWbsDragEnd(result, group.projectId)}>
                     <Droppable droppableId={`wbs-list-${group.projectId || 'unassigned'}`}>
                       {(provided) => (
                         <div
