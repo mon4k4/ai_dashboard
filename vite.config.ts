@@ -788,7 +788,7 @@ function buildWbsExportRows(projectTasks, members) {
   const pushNode = (node, parentTitle, depth, isGroupRoot = false) => {
     rows.push({
       parentTitle,
-      taskTitle: isGroupRoot ? '（親グループ）' : childTitle(node.task.title, depth),
+      taskTitle: isGroupRoot ? '' : childTitle(node.task.title, depth),
       assignee: assigneeFor(node.task),
       startDate: node.task.startDate || '',
       dueDate: node.task.dueDate || '',
@@ -819,6 +819,39 @@ function buildWbsExportRows(projectTasks, members) {
   }
 
   return rows;
+}
+
+function buildProjectMembers(project, projectTasks, members) {
+  const memberById = new Map((members || []).map(member => [member.id, member]));
+  const result = [];
+  const seenNames = new Set();
+
+  const addMember = member => {
+    const name = String(member?.name || '').trim();
+    if (!name || seenNames.has(name)) return;
+    seenNames.add(name);
+    result.push({
+      id: member?.id || '',
+      name,
+      group: member?.group || '',
+    });
+  };
+
+  if (project?.stakeholders?.length) {
+    project.stakeholders.forEach(memberId => addMember(memberById.get(memberId)));
+  } else {
+    (members || []).forEach(addMember);
+  }
+
+  projectTasks.forEach(task => {
+    if (task.memberId && memberById.has(task.memberId)) {
+      addMember(memberById.get(task.memberId));
+    } else if (task.assignee) {
+      addMember({ id: '', name: task.assignee, group: 'タスク担当者' });
+    }
+  });
+
+  return result.length > 0 ? result : [{ id: '', name: '', group: '' }];
 }
 
 function textCell(ref, value, style = 0) {
@@ -893,9 +926,9 @@ function buildStylesXml() {
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
   <dxfs count="4">
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF93C5FD"/><bgColor indexed="64"/></patternFill></fill></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFCD34D"/><bgColor indexed="64"/></patternFill></fill></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF86EFAC"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF93C5FD"/></patternFill></fill></dxf>
+    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFCD34D"/></patternFill></fill></dxf>
+    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF86EFAC"/></patternFill></fill></dxf>
     <dxf><border><left style="medium"><color rgb="FFEF4444"/></left><right style="medium"><color rgb="FFEF4444"/></right></border></dxf>
   </dxfs>
   <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
@@ -1019,8 +1052,8 @@ function buildWorksheetXml(projectName, rows, days) {
     <col min="1" max="1" width="28" customWidth="1"/>
     <col min="2" max="2" width="44" customWidth="1"/>
     <col min="3" max="3" width="18" customWidth="1"/>
-    <col min="4" max="5" width="13" customWidth="1"/>
-    <col min="6" max="${lastTimelineCol}" width="4.2" customWidth="1"/>
+    <col min="4" max="5" width="18" customWidth="1"/>
+    <col min="6" max="${lastTimelineCol}" width="7" customWidth="1"/>
     <col min="${statusColIndex}" max="${statusColIndex}" width="12" hidden="1" customWidth="1"/>
   </cols>
   <sheetData>${xmlRows.join('')}</sheetData>
@@ -1029,21 +1062,74 @@ function buildWorksheetXml(projectName, rows, days) {
   <conditionalFormatting sqref="${timelineRange}">
     ${cfRules.map((rule, index) => `<cfRule type="expression" dxfId="${rule.dxfId}" priority="${index + 1}"><formula>${escapeXml(rule.formula)}</formula></cfRule>`).join('')}
   </conditionalFormatting>
-  <dataValidations count="1">
-    <dataValidation type="date" allowBlank="1" showErrorMessage="1" errorTitle="日付形式エラー" error="開始日・終了日は日付で入力してください。" sqref="D4:E${lastDataRow}" operator="between">
-      <formula1>DATE(1900,1,1)</formula1>
-      <formula2>DATE(9999,12,31)</formula2>
+  <dataValidations count="2">
+    <dataValidation type="list" allowBlank="1" showErrorMessage="1" showInputMessage="1" errorTitle="担当者選択エラー" error="プロジェクトメンバーシートの一覧から担当者を選択してください。" promptTitle="担当者" prompt="プロジェクトメンバーシートの一覧から選択できます。" sqref="C4:C${lastDataRow}">
+      <formula1>ProjectMembers</formula1>
+    </dataValidation>
+    <dataValidation type="list" allowBlank="1" showErrorMessage="1" showInputMessage="1" errorTitle="日付選択エラー" error="線表ヘッダーの日付一覧から選択してください。" promptTitle="日付" prompt="日付候補のドロップダウンから選択できます。" sqref="D4:E${lastDataRow}">
+      <formula1>ProjectDates</formula1>
     </dataValidation>
   </dataValidations>
   <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
 </worksheet>`;
 }
 
-function buildWorkbookXml() {
+function buildMembersWorksheetXml(projectMembers) {
+  const lastRow = Math.max(2, projectMembers.length + 1);
+  const rows = [
+    `<row r="1" ht="22" customHeight="1">${[
+      textCell('A1', '担当者', 2),
+      textCell('B1', 'グループ', 2),
+      textCell('C1', 'ID', 2),
+    ].join('')}</row>`,
+  ];
+
+  projectMembers.forEach((member, index) => {
+    const rowNumber = index + 2;
+    rows.push(`<row r="${rowNumber}" ht="20" customHeight="1">${[
+      textCell(`A${rowNumber}`, member.name, 5),
+      textCell(`B${rowNumber}`, member.group, 5),
+      textCell(`C${rowNumber}`, member.id, 5),
+    ].join('')}</row>`);
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:C${lastRow}"/>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+      <selection pane="bottomLeft" activeCell="A2" sqref="A2"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="18"/>
+  <cols>
+    <col min="1" max="1" width="24" customWidth="1"/>
+    <col min="2" max="2" width="22" customWidth="1"/>
+    <col min="3" max="3" width="30" customWidth="1"/>
+  </cols>
+  <sheetData>${rows.join('')}</sheetData>
+  <autoFilter ref="A1:C${lastRow}"/>
+  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+</worksheet>`;
+}
+
+function buildWorkbookXml(days, projectMembers) {
+  const timelineStartCol = 6;
+  const lastTimelineColName = columnName(timelineStartCol + days.length - 1);
+  const memberLastRow = Math.max(2, projectMembers.length + 1);
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <bookViews><workbookView xWindow="0" yWindow="0" windowWidth="18000" windowHeight="12000"/></bookViews>
-  <sheets><sheet name="WBS" sheetId="1" r:id="rId1"/></sheets>
+  <sheets>
+    <sheet name="WBS" sheetId="1" r:id="rId1"/>
+    <sheet name="プロジェクトメンバー" sheetId="2" r:id="rId2"/>
+  </sheets>
+  <definedNames>
+    <definedName name="ProjectMembers">'プロジェクトメンバー'!$A$2:$A$${memberLastRow}</definedName>
+    <definedName name="ProjectDates">'WBS'!$F$2:$${lastTimelineColName}$2</definedName>
+  </definedNames>
   <calcPr calcId="171027" fullCalcOnLoad="1" forceFullCalc="1"/>
 </workbook>`;
 }
@@ -1052,7 +1138,8 @@ function buildWorkbookRelsXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`;
 }
 
@@ -1072,6 +1159,7 @@ function buildContentTypesXml() {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
@@ -1099,11 +1187,14 @@ function buildAppPropsXml() {
   <HeadingPairs>
     <vt:vector size="2" baseType="variant">
       <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
-      <vt:variant><vt:i4>1</vt:i4></vt:variant>
+      <vt:variant><vt:i4>2</vt:i4></vt:variant>
     </vt:vector>
   </HeadingPairs>
   <TitlesOfParts>
-    <vt:vector size="1" baseType="lpstr"><vt:lpstr>WBS</vt:lpstr></vt:vector>
+    <vt:vector size="2" baseType="lpstr">
+      <vt:lpstr>WBS</vt:lpstr>
+      <vt:lpstr>プロジェクトメンバー</vt:lpstr>
+    </vt:vector>
   </TitlesOfParts>
   <Company></Company>
   <LinksUpToDate>false</LinksUpToDate>
@@ -1224,20 +1315,23 @@ function buildWbsWorkbookBuffer({ projectId, tasks = [], projects = [], members 
   const projectTasks = tasks
     .filter(task => !task.isNew)
     .filter(task => normalizedProjectId ? task.projectId === normalizedProjectId : !task.projectId);
+  const projectMembers = buildProjectMembers(project, projectTasks, members);
   const rows = buildWbsExportRows(projectTasks, members);
   const { startDate, endDate } = collectDateBounds(project, projectTasks);
   const days = buildDateRange(startDate, endDate);
   const worksheetXml = buildWorksheetXml(projectName, rows, days);
+  const membersWorksheetXml = buildMembersWorksheetXml(projectMembers);
 
   return createZip([
     { name: '[Content_Types].xml', data: buildContentTypesXml() },
     { name: '_rels/.rels', data: buildRootRelsXml() },
     { name: 'docProps/core.xml', data: buildCorePropsXml(projectName) },
     { name: 'docProps/app.xml', data: buildAppPropsXml() },
-    { name: 'xl/workbook.xml', data: buildWorkbookXml() },
+    { name: 'xl/workbook.xml', data: buildWorkbookXml(days, projectMembers) },
     { name: 'xl/_rels/workbook.xml.rels', data: buildWorkbookRelsXml() },
     { name: 'xl/styles.xml', data: buildStylesXml() },
     { name: 'xl/worksheets/sheet1.xml', data: worksheetXml },
+    { name: 'xl/worksheets/sheet2.xml', data: membersWorksheetXml },
   ]);
 }
 

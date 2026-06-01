@@ -155,6 +155,31 @@ export default function WBS() {
   // 承認済みタスクのみをフィルタリング
   const approvedTasks = useMemo(() => tasks.filter(t => !t.isNew), [tasks]);
 
+  // 循環参照を防止し、かつ同一プロジェクト内の有効な親グループ候補を取得する
+  const getParentGroupOptions = (currentTask: TaskExtractResult) => {
+    const projectTasks = approvedTasks.filter(t => {
+      if (activeProjectId === null) return !t.projectId;
+      return t.projectId === activeProjectId;
+    });
+
+    const descendants = new Set<string>();
+    const findDescendants = (pid: string) => {
+      projectTasks.forEach(t => {
+        if (t.parentId === pid) {
+          descendants.add(t.id);
+          findDescendants(t.id);
+        }
+      });
+    };
+    findDescendants(currentTask.id);
+
+    return projectTasks.filter(t => 
+      !t.parentId && // 親を持たない（最上位タスクグループ候補）
+      t.id !== currentTask.id && // 自分自身ではない
+      !descendants.has(t.id) // 自分の子孫タスクではない
+    );
+  };
+
   // フィルター条件にマッチするタスクIDセットを構築（祖先も含める）
   const filteredTasks = useMemo(() => {
     // まずプロジェクトで絞り込み
@@ -320,6 +345,23 @@ export default function WBS() {
 
           {/* 右側：属性編集コントロール */}
           <div className="wbs-meta-controls">
+            {/* 親グループ */}
+            <div className="wbs-control-item" style={{ width: '150px' }} title="親グループ設定">
+              <FolderTree size={14} style={{ color: 'var(--text-muted)' }} />
+              <select
+                className="wbs-inline-select"
+                value={task.parentId || ''}
+                onChange={e => {
+                  updateTask(task.id, { parentId: e.target.value || undefined });
+                }}
+              >
+                <option value="">-- 最上位タスク --</option>
+                {getParentGroupOptions(task).map(p => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            </div>
+
             {/* 担当者 */}
             <div className="wbs-control-item" title="担当者">
               <Users size={14} style={{ color: 'var(--text-muted)' }} />
@@ -618,6 +660,7 @@ export default function WBS() {
             <div className="wbs-table-header">
               <span style={{ flex: 1, paddingLeft: '32px' }}>タスク構造 / タイトル</span>
               <div className="wbs-table-header-meta">
+                <span style={{ width: '150px', textAlign: 'left' }}>親グループ</span>
                 <span style={{ width: '130px', textAlign: 'left' }}>担当者</span>
                 <span style={{ width: '130px', textAlign: 'center' }}>日程</span>
                 <span style={{ width: '70px', textAlign: 'center' }}>進捗</span>
