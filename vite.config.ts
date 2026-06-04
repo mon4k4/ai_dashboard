@@ -884,13 +884,16 @@ function buildStylesXml() {
     <font><b/><sz val="11"/><color rgb="FF111827"/><name val="Calibri"/><family val="2"/></font>
     <font><sz val="9"/><color rgb="FF4B5563"/><name val="Calibri"/><family val="2"/></font>
   </fonts>
-  <fills count="6">
+  <fills count="9">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFD9EAF7"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/><bgColor indexed="64"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF93C5FD"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFCD34D"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF86EFAC"/><bgColor indexed="64"/></patternFill></fill>
   </fills>
   <borders count="3">
     <border><left/><right/><top/><bottom/><diagonal/></border>
@@ -910,7 +913,7 @@ function buildStylesXml() {
     </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="12">
+  <cellXfs count="15">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
     <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
@@ -923,12 +926,12 @@ function buildStylesXml() {
     <xf numFmtId="0" fontId="0" fillId="4" borderId="2" xfId="0" applyFill="1" applyBorder="1"/>
     <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
     <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="6" borderId="2" xfId="0" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="0" fillId="7" borderId="2" xfId="0" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="0" fillId="8" borderId="2" xfId="0" applyFill="1" applyBorder="1"/>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-  <dxfs count="4">
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF93C5FD"/></patternFill></fill></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFCD34D"/></patternFill></fill></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FF86EFAC"/></patternFill></fill></dxf>
+  <dxfs count="1">
     <dxf><border><left style="medium"><color rgb="FFEF4444"/></left><right style="medium"><color rgb="FFEF4444"/></right></border></dxf>
   </dxfs>
   <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
@@ -1006,6 +1009,8 @@ function buildWorksheetXml(projectName, rows, days) {
   rows.forEach((item, index) => {
     const rowNumber = index + 4;
     const rowStyle = item.isGroupRoot ? 7 : 5;
+    const barStyle = item.status === 'done' ? 14 : item.status === 'in-progress' ? 13 : 12;
+    const hasValidRange = !!(parseDateParts(item.startDate) && parseDateParts(item.dueDate) && item.startDate <= item.dueDate);
     const cells = [
       textCell(`A${rowNumber}`, item.parentTitle, rowStyle),
       textCell(`B${rowNumber}`, item.taskTitle, rowStyle),
@@ -1015,7 +1020,8 @@ function buildWorksheetXml(projectName, rows, days) {
     ];
     days.forEach((day, dayIndex) => {
       const col = columnName(timelineStartCol + dayIndex);
-      cells.push(textCell(`${col}${rowNumber}`, '', isWeekend(day) ? 9 : 8));
+      const isScheduledDay = hasValidRange && day >= item.startDate && day <= item.dueDate;
+      cells.push(textCell(`${col}${rowNumber}`, '', isScheduledDay ? barStyle : isWeekend(day) ? 9 : 8));
     });
     cells.push(textCell(`${statusColName}${rowNumber}`, item.status, 5));
     xmlRows.push(`<row r="${rowNumber}" ht="22" customHeight="1">${cells.join('')}</row>`);
@@ -1030,10 +1036,7 @@ function buildWorksheetXml(projectName, rows, days) {
 
   const timelineRange = `${columnName(timelineStartCol)}4:${lastTimelineColName}${lastDataRow}`;
   const cfRules = [
-    { dxfId: 0, formula: `AND($D4<>"",$E4<>"",${columnName(timelineStartCol)}$2>=$D4,${columnName(timelineStartCol)}$2<=$E4,$${statusColName}4="todo")` },
-    { dxfId: 1, formula: `AND($D4<>"",$E4<>"",${columnName(timelineStartCol)}$2>=$D4,${columnName(timelineStartCol)}$2<=$E4,$${statusColName}4="in-progress")` },
-    { dxfId: 2, formula: `AND($D4<>"",$E4<>"",${columnName(timelineStartCol)}$2>=$D4,${columnName(timelineStartCol)}$2<=$E4,$${statusColName}4="done")` },
-    { dxfId: 3, formula: `${columnName(timelineStartCol)}$2=TODAY()` },
+    { dxfId: 0, formula: `${columnName(timelineStartCol)}$2=TODAY()` },
   ];
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
