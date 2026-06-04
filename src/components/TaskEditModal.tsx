@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, ArrowRight, CornerDownRight, Trash2, Calendar, FileText } from 'lucide-react';
+import { X, ArrowRight, CornerDownRight, Trash2, Calendar, FileText, Eye, Edit3, Image as ImageIcon } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface TaskEditModalProps {
   taskId: string;
@@ -10,6 +11,9 @@ interface TaskEditModalProps {
 export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
   const { tasks, projects, members, updateTask, addTask, deleteTask, minutes } = useAppContext();
   const [activeTaskId, setActiveTaskId] = useState(taskId);
+  const [previewDetails, setPreviewDetails] = useState(false);
+  const [previewResult, setPreviewResult] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     setActiveTaskId(taskId);
@@ -75,6 +79,54 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
       case 'in-progress': return '#3b82f6';
       case 'done': return '#10b981';
       default: return 'var(--text-muted)';
+    }
+  };
+
+  const handlePasteImage = async (e: React.ClipboardEvent<HTMLTextAreaElement>, field: 'details' | 'actionResult') => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (!file) continue;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const base64 = event.target?.result as string;
+            const res = await fetch('/api/image/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageBase64: base64, mimeType: file.type })
+            });
+            const data = await res.json();
+            if (data.success) {
+              const imageTag = `\n![画像](${data.url})\n`;
+              const currentVal = task![field] || '';
+              
+              // 簡易的にカーソル位置ではなく末尾に追記するか、全体のテキストを更新する
+              // ここではシンプルに現在のテキストに追記する
+              const el = e.target as HTMLTextAreaElement;
+              const start = el.selectionStart;
+              const end = el.selectionEnd;
+              const newVal = currentVal.substring(0, start) + imageTag + currentVal.substring(end);
+              
+              updateTask(task!.id, { [field]: newVal });
+            } else {
+              alert('画像のアップロードに失敗しました: ' + data.error);
+            }
+          } catch (err) {
+            alert('画像のアップロードに失敗しました');
+          } finally {
+            setIsUploading(false);
+          }
+        };
+        reader.readAsDataURL(file);
+        break; // 最初の画像のみ処理
+      }
     }
   };
 
@@ -263,22 +315,75 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={styles.label}>詳細情報</label>
-            <textarea 
-              value={task.details || ''} 
-              onChange={e => updateTask(task.id, { details: e.target.value })}
-              style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={styles.label}>詳細情報</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button 
+                  onClick={() => setPreviewDetails(false)} 
+                  style={{ ...styles.tabBtn, background: !previewDetails ? 'rgba(99,102,241,0.1)' : 'transparent', color: !previewDetails ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                >
+                  <Edit3 size={14} /> 編集
+                </button>
+                <button 
+                  onClick={() => setPreviewDetails(true)} 
+                  style={{ ...styles.tabBtn, background: previewDetails ? 'rgba(99,102,241,0.1)' : 'transparent', color: previewDetails ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                >
+                  <Eye size={14} /> プレビュー
+                </button>
+              </div>
+            </div>
+            {previewDetails ? (
+              <div style={{ ...styles.input, minHeight: '100px', background: 'rgba(0,0,0,0.2)' }}>
+                {task.details ? <MarkdownRenderer content={task.details} /> : <span style={{ color: 'var(--text-muted)' }}>詳細情報はありません。</span>}
+              </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <textarea 
+                  value={task.details || ''} 
+                  onChange={e => updateTask(task.id, { details: e.target.value })}
+                  onPaste={e => handlePasteImage(e, 'details')}
+                  placeholder="詳細情報を入力... (画像をペーストできます)"
+                  style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
+                />
+                {isUploading && <div style={styles.uploadingBadge}><ImageIcon size={12} /> アップロード中...</div>}
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={styles.label}>対応結果</label>
-            <textarea 
-              value={task.actionResult || ''} 
-              onChange={e => updateTask(task.id, { actionResult: e.target.value })}
-              placeholder="対応結果や進捗メモを入力してください..."
-              style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={styles.label}>対応結果</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button 
+                  onClick={() => setPreviewResult(false)} 
+                  style={{ ...styles.tabBtn, background: !previewResult ? 'rgba(16,185,129,0.1)' : 'transparent', color: !previewResult ? '#10b981' : 'var(--text-muted)' }}
+                >
+                  <Edit3 size={14} /> 編集
+                </button>
+                <button 
+                  onClick={() => setPreviewResult(true)} 
+                  style={{ ...styles.tabBtn, background: previewResult ? 'rgba(16,185,129,0.1)' : 'transparent', color: previewResult ? '#10b981' : 'var(--text-muted)' }}
+                >
+                  <Eye size={14} /> プレビュー
+                </button>
+              </div>
+            </div>
+            {previewResult ? (
+              <div style={{ ...styles.input, minHeight: '80px', background: 'rgba(0,0,0,0.2)' }}>
+                {task.actionResult ? <MarkdownRenderer content={task.actionResult} /> : <span style={{ color: 'var(--text-muted)' }}>対応結果はありません。</span>}
+              </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <textarea 
+                  value={task.actionResult || ''} 
+                  onChange={e => updateTask(task.id, { actionResult: e.target.value })}
+                  onPaste={e => handlePasteImage(e, 'actionResult')}
+                  placeholder="対応結果や進捗メモを入力... (画像をペーストできます)"
+                  style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
+                />
+                {isUploading && <div style={styles.uploadingBadge}><ImageIcon size={12} /> アップロード中...</div>}
+              </div>
+            )}
           </div>
 
           {/* 子タスク管理セクション */}
@@ -416,5 +521,30 @@ const styles = {
     borderRadius: 'var(--radius-sm)',
     color: 'var(--text-primary)',
     fontSize: '0.9rem',
+  },
+  tabBtn: {
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.3rem',
+    padding: '0.2rem 0.5rem',
+    borderRadius: '4px',
+    fontSize: '0.75rem',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  uploadingBadge: {
+    position: 'absolute' as const,
+    right: '10px',
+    bottom: '15px',
+    background: 'rgba(0,0,0,0.7)',
+    color: '#fff',
+    padding: '0.2rem 0.5rem',
+    borderRadius: '4px',
+    fontSize: '0.7rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.3rem',
+    pointerEvents: 'none' as const,
   }
 };

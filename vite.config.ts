@@ -1475,6 +1475,34 @@ function backendPlugin() {
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
           return;
         }
+        
+        // Image Upload for Paste
+        if (req.url === '/api/image/upload' && req.method === 'POST') {
+          try {
+            const body = await parseBody(req);
+            const base64Data = body.imageBase64.replace(/^data:image\/\w+;base64,/, "");
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            const imagesDir = path.join(process.cwd(), 'data', 'images');
+            if (!fs.existsSync(imagesDir)) {
+              fs.mkdirSync(imagesDir, { recursive: true });
+            }
+            
+            const ext = body.mimeType ? body.mimeType.split('/')[1] : 'png';
+            const filename = `paste_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${ext}`;
+            const filePath = path.join(imagesDir, filename);
+            
+            fs.writeFileSync(filePath, buffer);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, url: `/api/image/view?path=${encodeURIComponent(filePath)}` }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+
         // Scan screenshots for existing minutes
         if (req.url === '/api/minutes/scan-screenshots' && req.method === 'POST') {
           try {

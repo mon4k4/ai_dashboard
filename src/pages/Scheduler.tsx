@@ -247,7 +247,7 @@ export default function Scheduler() {
       projectName: string; 
       color: string; 
       project?: any; 
-      tasks: (TaskExtractResult & { depth: number; hasChildren: boolean })[] 
+      tasks: (TaskExtractResult & { depth: number; hasChildren: boolean; rootIndex: number })[] 
     }[] = [];
     
     // 未承認タスク（isNew: true）は除外する
@@ -260,7 +260,7 @@ export default function Scheduler() {
       filteredTasks = filteredTasks.filter(t => t.status !== 'done');
     }
 
-    const buildTreeList = (taskList: TaskExtractResult[]): (TaskExtractResult & { depth: number; hasChildren: boolean })[] => {
+    const buildTreeList = (taskList: TaskExtractResult[]): (TaskExtractResult & { depth: number; hasChildren: boolean; rootIndex: number })[] => {
       const childrenMap = new Map<string, TaskExtractResult[]>();
       const rootTasks: TaskExtractResult[] = [];
       const taskIds = new Set(taskList.map(t => t.id));
@@ -286,21 +286,22 @@ export default function Scheduler() {
       rootTasks.sort(sortFn);
       childrenMap.forEach(list => list.sort(sortFn));
       
-      const result: (TaskExtractResult & { depth: number; hasChildren: boolean })[] = [];
-      const traverse = (task: TaskExtractResult, depth: number) => {
+      const result: (TaskExtractResult & { depth: number; hasChildren: boolean; rootIndex: number })[] = [];
+      const traverse = (task: TaskExtractResult, depth: number, rootIndex: number) => {
         const children = childrenMap.get(task.id) || [];
         const isCollapsed = collapsedTaskIds[task.id];
         result.push({
           ...task,
           depth,
-          hasChildren: children.length > 0
+          hasChildren: children.length > 0,
+          rootIndex
         });
         if (!isCollapsed) {
-          children.forEach(child => traverse(child, depth + 1));
+          children.forEach(child => traverse(child, depth + 1, rootIndex));
         }
       };
       
-      rootTasks.forEach(root => traverse(root, 0));
+      rootTasks.forEach((root, idx) => traverse(root, 0, idx));
       return result;
     };
 
@@ -714,6 +715,11 @@ export default function Scheduler() {
                           {group.tasks.map((task: any, index) => (
                             <Draggable key={task.id} draggableId={task.id} index={index}>
                               {(provided, snapshot) => {
+                                const isAlt = task.rootIndex % 2 === 1;
+                                const baseBg = isAlt ? 'rgba(255,255,255,0.025)' : 'transparent';
+                                const rowBg = snapshot.isDragging ? 'var(--bg-card, #1a1a24)' : baseBg;
+                                const borderTop = task.depth === 0 ? '1px solid rgba(255,255,255,0.08)' : undefined;
+                                
                                 const rowElement = (
                                   <div
                                     ref={provided.innerRef}
@@ -725,9 +731,11 @@ export default function Scheduler() {
                                       ...provided.draggableProps.style,
                                       paddingLeft: `${task.depth * 20 + 16}px`,
                                       transform: snapshot.isDragging ? provided.draggableProps.style?.transform : 'translate(0, 0)',
-                                      background: snapshot.isDragging ? 'var(--bg-card, #1a1a24)' : 'transparent',
+                                      background: rowBg,
+                                      borderTop: borderTop,
                                       width: snapshot.isDragging ? `${leftColumnWidth - 10}px` : (provided.draggableProps.style as any)?.width || '100%',
-                                      border: snapshot.isDragging ? '1px solid var(--accent-primary)' : undefined,
+                                      border: snapshot.isDragging ? '1px solid var(--accent-primary)' : (borderTop ? `1px solid transparent` : undefined), // Keep height stable
+                                      borderTopColor: borderTop ? 'rgba(255,255,255,0.08)' : undefined,
                                       borderRadius: snapshot.isDragging ? '6px' : undefined,
                                       boxShadow: snapshot.isDragging ? '0 10px 20px rgba(0,0,0,0.5)' : undefined,
                                       zIndex: snapshot.isDragging ? 9999 : undefined
@@ -1128,10 +1136,14 @@ export default function Scheduler() {
                   })()}
                 </div>
                 {group.tasks.map(task => {
+                  const isAlt = task.rootIndex % 2 === 1;
+                  const baseBg = isAlt ? 'rgba(255,255,255,0.025)' : 'transparent';
+                  const borderTop = task.depth === 0 ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent';
+                  
                   if (!task.startDate || !task.dueDate) {
                     return (
-                      <div key={`timeline-task-${task.id}`} style={styles.taskRowRight}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>日程未設定</span>
+                      <div key={`timeline-task-${task.id}`} style={{ ...styles.taskRowRight, background: baseBg, borderTop }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', paddingLeft: '8px' }}>日程未設定</span>
                       </div>
                     );
                   }
@@ -1141,7 +1153,7 @@ export default function Scheduler() {
                   const progress = task.progress || 0;
 
                   return (
-                    <div key={`timeline-task-${task.id}`} style={styles.taskRowRight}>
+                    <div key={`timeline-task-${task.id}`} style={{ ...styles.taskRowRight, background: baseBg, borderTop }}>
                       <div 
                         style={{
                           position: 'absolute',
