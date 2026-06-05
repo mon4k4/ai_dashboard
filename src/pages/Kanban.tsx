@@ -45,8 +45,13 @@ export default function Kanban() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  
+  // フィルター状態
   const [showOnlyMine, setShowOnlyMine] = useState(() => {
     return localStorage.getItem('kanban_showOnlyMine') === 'true';
+  });
+  const [hideClosedProjects, setHideClosedProjects] = useState(() => {
+    return localStorage.getItem('kanban_hideClosedProjects') === 'true';
   });
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>(
@@ -120,7 +125,9 @@ export default function Kanban() {
       tasks: TaskExtractResult[] 
     }[] = [];
     
-    projects.forEach(p => {
+    const activeProjects = hideClosedProjects ? projects.filter(p => !p.isClosed) : projects;
+
+    activeProjects.forEach(p => {
       groups.push({
         projectId: p.id,
         projectName: p.name,
@@ -140,11 +147,23 @@ export default function Kanban() {
     }
 
     return groups;
-  }, [filteredTasks, projects]);
+  }, [filteredTasks, projects, hideClosedProjects]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1.5rem', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+          <input 
+            type="checkbox" 
+            checked={hideClosedProjects} 
+            onChange={e => {
+              setHideClosedProjects(e.target.checked);
+              localStorage.setItem('kanban_hideClosedProjects', String(e.target.checked));
+            }} 
+            style={{ width: '16px', height: '16px' }}
+          />
+          クローズ済みのPJを非表示
+        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
           <input 
             type="checkbox" 
@@ -205,9 +224,10 @@ export default function Kanban() {
           <div style={styles.board}>
             {groupedTasks.map((group: any) => {
               const isProjectCollapsed = collapsedProjectIds[group.projectId || 'unassigned'];
-              const projectIndex = group.projectId ? projects.findIndex(p => p.id === group.projectId) : -1;
+              const activeProjects = hideClosedProjects ? projects.filter(p => !p.isClosed) : projects;
+              const projectIndex = group.projectId ? activeProjects.findIndex(p => p.id === group.projectId) : -1;
               const isFirst = projectIndex === 0;
-              const isLast = projectIndex === projects.length - 1;
+              const isLast = projectIndex === activeProjects.length - 1;
 
               return (
                 <div key={group.projectId || 'unassigned'} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

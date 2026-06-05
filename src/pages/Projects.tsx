@@ -16,6 +16,14 @@ export default function Projects() {
   const [isGenerating, setIsGenerating] = useState<Record<string, boolean>>({});
   const [expandedAIStatus, setExpandedAIStatus] = useState<Record<string, boolean>>({});
 
+  const [hideClosedProjects, setHideClosedProjects] = useState(() => {
+    return localStorage.getItem('projects_hideClosedProjects') === 'true';
+  });
+
+  const filteredProjects = useMemo(() => {
+    return hideClosedProjects ? projects.filter(p => !p.isClosed) : projects;
+  }, [projects, hideClosedProjects]);
+
   const toggleAIStatus = (projectId: string) => {
     setExpandedAIStatus(prev => ({
       ...prev,
@@ -98,7 +106,7 @@ export default function Projects() {
     const monthSet = new Set<string>();
     const totals: Record<string, number> = {};
     
-    projects.forEach(p => {
+    filteredProjects.forEach(p => {
       const pMonths = new Set([
         ...getMonthsBetween(p.startDate, p.endDate),
         ...Object.keys(p.workload || {})
@@ -111,16 +119,30 @@ export default function Projects() {
 
     const sortedMonths = Array.from(monthSet).sort();
     return { allMonths: sortedMonths, totalWorkloadPerMonth: totals };
-  }, [projects]);
+  }, [filteredProjects]);
 
   const baseWorkload = parseInt(localStorage.getItem('monthlyWorkload') || '155');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1.5rem', overflowY: 'auto' }}>
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, flexShrink: 0 }}>
-        <FolderKanban size={24} color="var(--accent-primary)" />
-        Projects
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+          <FolderKanban size={24} color="var(--accent-primary)" />
+          Projects
+        </h2>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+          <input 
+            type="checkbox" 
+            checked={hideClosedProjects} 
+            onChange={e => {
+              setHideClosedProjects(e.target.checked);
+              localStorage.setItem('projects_hideClosedProjects', String(e.target.checked));
+            }} 
+            style={{ width: '16px', height: '16px' }}
+          />
+          クローズ済みのプロジェクトを非表示
+        </label>
+      </div>
 
       {/* 月別 全体稼働率 */}
       {allMonths.length > 0 && (
@@ -202,12 +224,12 @@ export default function Projects() {
 
       {/* プロジェクト一覧 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        {projects.length === 0 ? (
+        {filteredProjects.length === 0 ? (
           <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             プロジェクトがありません。
           </div>
         ) : (
-          projects.map(project => {
+          filteredProjects.map(project => {
             const months = getMonthsBetween(project.startDate, project.endDate);
             
             return (
@@ -227,6 +249,15 @@ export default function Projects() {
                         style={{ width: '30px', height: '30px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer', background: 'transparent' }}
                         title="プロジェクトカラー"
                       />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--text-secondary)', marginLeft: '1rem', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!project.isClosed}
+                          onChange={e => updateProject(project.id, { isClosed: e.target.checked })}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        クローズ
+                      </label>
                     </div>
                     <input 
                       value={project.summary}

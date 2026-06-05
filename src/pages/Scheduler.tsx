@@ -111,6 +111,13 @@ export default function Scheduler() {
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Record<string, boolean>>(
     () => readSavedCollapseState(COLLAPSED_PROJECTS_STORAGE_KEY)
   );
+  const [hideClosedProjects, setHideClosedProjects] = useState(() => {
+    return localStorage.getItem('scheduler_hideClosedProjects') === 'true';
+  });
+
+  const activeProjects = useMemo(() => {
+    return hideClosedProjects ? projects.filter(p => !p.isClosed) : projects;
+  }, [projects, hideClosedProjects]);
 
   const [tooltipState, setTooltipState] = useState<{
     x: number;
@@ -305,7 +312,7 @@ export default function Scheduler() {
       return result;
     };
 
-    projects.forEach(p => {
+    activeProjects.forEach(p => {
       const isProjectCollapsed = collapsedProjectIds[p.id || 'unassigned'];
       groups.push({
         projectId: p.id,
@@ -328,7 +335,7 @@ export default function Scheduler() {
     }
  
     return groups;
-  }, [tasks, projects, showOnlyMine, hideCompleted, myMemberId, collapsedTaskIds, collapsedProjectIds]);
+  }, [tasks, activeProjects, showOnlyMine, hideCompleted, myMemberId, collapsedTaskIds, collapsedProjectIds]);
   // WBSドラッグ＆ドロップハンドラ
   const handleWbsDragEnd = (result: DropResult, projectId: string | null) => {
 
@@ -560,6 +567,18 @@ export default function Scheduler() {
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
             <input 
               type="checkbox" 
+              checked={hideClosedProjects} 
+              onChange={e => {
+                setHideClosedProjects(e.target.checked);
+                localStorage.setItem('scheduler_hideClosedProjects', String(e.target.checked));
+              }} 
+              style={{ width: '16px', height: '16px' }}
+            />
+            クローズ済みのPJを非表示
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
+            <input 
+              type="checkbox" 
               checked={hideCompleted} 
               onChange={e => {
                 setHideCompleted(e.target.checked);
@@ -622,9 +641,9 @@ export default function Scheduler() {
             <div ref={leftScrollRef} onScroll={handleLeftPanelScroll} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
               {groupedTasks.map(group => {
                 const isProjectCollapsed = collapsedProjectIds[group.projectId || 'unassigned'];
-                const projectIndex = group.projectId ? projects.findIndex(p => p.id === group.projectId) : -1;
+                const projectIndex = group.projectId ? activeProjects.findIndex(p => p.id === group.projectId) : -1;
                 const isFirst = projectIndex === 0;
-                const isLast = projectIndex === projects.length - 1;
+                const isLast = projectIndex === activeProjects.length - 1;
 
                 return (
                   <div key={group.projectId || 'unassigned'}>

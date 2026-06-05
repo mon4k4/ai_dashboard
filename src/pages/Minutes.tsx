@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../store/AppContext';
 import { summarizeMeeting, startBatchProcess } from '../services/llmService';
@@ -62,6 +62,18 @@ export default function Minutes() {
   const [collapsedMonths, setCollapsedMonths] = useState<Record<string, boolean>>(
     () => readSavedCollapsedMonths()
   );
+  const [hideClosedProjects, setHideClosedProjects] = useState(() => {
+    return localStorage.getItem('minutes_hideClosedProjects') === 'true';
+  });
+
+  const filteredMinutes = useMemo(() => {
+    if (!hideClosedProjects) return minutes;
+    return minutes.filter(m => {
+      if (!m.projectId) return true;
+      const proj = projects.find(p => p.id === m.projectId);
+      return !proj || !proj.isClosed;
+    });
+  }, [minutes, projects, hideClosedProjects]);
 
   const targetDir = localStorage.getItem('minutesDir') || './議事録一覧';
 
@@ -140,10 +152,24 @@ export default function Minutes() {
           <FileText size={24} color="var(--accent-primary)" />
           Meeting Minutes
         </div>
-        <button className="btn-primary" onClick={handleBatchProcess} disabled={batchStatus.isProcessing} style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}>
-          {batchStatus.isProcessing ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
-          自動一括処理を実行
-        </button>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.95rem' }}>
+            <input 
+              type="checkbox" 
+              checked={hideClosedProjects} 
+              onChange={e => {
+                setHideClosedProjects(e.target.checked);
+                localStorage.setItem('minutes_hideClosedProjects', String(e.target.checked));
+              }} 
+              style={{ width: '16px', height: '16px' }}
+            />
+            クローズ済みのPJを非表示
+          </label>
+          <button className="btn-primary" onClick={handleBatchProcess} disabled={batchStatus.isProcessing} style={{ fontSize: '0.9rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            {batchStatus.isProcessing ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+            自動一括処理を実行
+          </button>
+        </div>
       </h2>
 
       {batchStatus.message && (
@@ -191,7 +217,7 @@ export default function Minutes() {
                 style={{ width: '100%', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
               >
                 <option value="">-- 未設定 --</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {projects.filter(p => !hideClosedProjects || !p.isClosed).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Zoomの文字起こしを貼り付けてください..." rows={3} style={{ resize: 'vertical' }} />
@@ -217,9 +243,9 @@ export default function Minutes() {
       {/* 議事録一覧 */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         {(() => {
-          if (minutes.length === 0) return <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem' }}>議事録がありません。</div>;
+          if (filteredMinutes.length === 0) return <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem' }}>議事録がありません。</div>;
           
-          const grouped = minutes.reduce((acc, m) => {
+          const grouped = filteredMinutes.reduce((acc: Record<string, any[]>, m: any) => {
             const key = m.date ? m.date.substring(0, 7) : 'Unknown';
             if (!acc[key]) acc[key] = [];
             acc[key].push(m);
@@ -244,8 +270,8 @@ export default function Minutes() {
                 {month === 'Unknown' ? '日付未設定' : `${month.replace('-', '年')}月`} <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>({grouped[month].length}件)</span>
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
-                {grouped[month].map(m => (
-                  <MinuteCard key={m.id} minute={m} />
+                {grouped[month].map((m: any) => (
+                  <MinuteCard key={m.id} minute={m} hideClosedProjects={hideClosedProjects} />
                 ))}
               </div>
             </details>
@@ -257,7 +283,7 @@ export default function Minutes() {
   );
 }
 
-function MinuteCard({ minute }: { minute: any }) {
+function MinuteCard({ minute, hideClosedProjects }: { minute: any; hideClosedProjects: boolean }) {
   const { updateMinute, projects } = useAppContext();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
@@ -332,7 +358,7 @@ function MinuteCard({ minute }: { minute: any }) {
               style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)' }}
             >
               <option value="">-- 未選択 --</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {projects.filter(p => !hideClosedProjects || !p.isClosed || p.id === editProjectId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <textarea

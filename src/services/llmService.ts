@@ -33,6 +33,7 @@ export interface Project {
   meetings?: ProjectMeeting[];
   stakeholders?: string[]; // Array of memberIds
   aiStatusSummary?: string; // AI生成の状況と詳細概要
+  isClosed?: boolean; // クローズ済みフラグ
 }
 
 export interface ProjectMeeting {

@@ -13,10 +13,20 @@ interface TaskNode {
 export default function WBS() {
   const { tasks, projects, members, settings, addTask, updateTask, deleteTask } = useAppContext();
   
+  const [hideClosedProjects, setHideClosedProjects] = useState(() => {
+    return localStorage.getItem('wbs_hideClosedProjects') === 'true';
+  });
+
+  const activeProjects = useMemo(() => {
+    return hideClosedProjects ? projects.filter(p => !p.isClosed) : projects;
+  }, [projects, hideClosedProjects]);
+
   // アクティブなプロジェクトID
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
-    if (projects.length > 0) {
-      return projects[0].id;
+    const initialHide = localStorage.getItem('wbs_hideClosedProjects') === 'true';
+    const list = initialHide ? projects.filter(p => !p.isClosed) : projects;
+    if (list.length > 0) {
+      return list[0].id;
     }
     return null;
   });
@@ -44,19 +54,19 @@ export default function WBS() {
 
   // プロジェクト一覧に変化があった場合の安全なフォールバック
   useEffect(() => {
-    if (!hasUserSelectedProject.current && activeProjectId === null && projects.length > 0) {
-      setActiveProjectId(projects[0].id);
+    if (!hasUserSelectedProject.current && activeProjectId === null && activeProjects.length > 0) {
+      setActiveProjectId(activeProjects[0].id);
       return;
     }
 
-    if (activeProjectId && !projects.some(p => p.id === activeProjectId) && activeProjectId !== 'unassigned') {
-      if (projects.length > 0) {
-        setActiveProjectId(projects[0].id);
+    if (activeProjectId && !activeProjects.some(p => p.id === activeProjectId) && activeProjectId !== 'unassigned') {
+      if (activeProjects.length > 0) {
+        setActiveProjectId(activeProjects[0].id);
       } else {
         setActiveProjectId(null);
       }
     }
-  }, [projects, activeProjectId]);
+  }, [activeProjects, activeProjectId]);
 
   // 折りたたみ状態をlocalStorageに保存するヘルパー
   const toggleCollapse = (taskId: string) => {
@@ -534,7 +544,7 @@ export default function WBS() {
 
       {/* プロジェクトタブ選択部 */}
       <div className="wbs-tab-container">
-        {projects.map(proj => {
+        {activeProjects.map(proj => {
           const isActive = activeProjectId === proj.id;
           return (
             <button
@@ -608,6 +618,21 @@ export default function WBS() {
             />
             <span className="wbs-toggle-slider" />
             <span className="wbs-filter-label">未完了のみ</span>
+          </label>
+        </div>
+        <div className="wbs-filter-group">
+          <Filter size={14} className="wbs-filter-icon" />
+          <label className="wbs-filter-toggle">
+            <input
+              type="checkbox"
+              checked={hideClosedProjects}
+              onChange={e => {
+                setHideClosedProjects(e.target.checked);
+                localStorage.setItem('wbs_hideClosedProjects', String(e.target.checked));
+              }}
+            />
+            <span className="wbs-toggle-slider" />
+            <span className="wbs-filter-label">クローズ済みPJ非表示</span>
           </label>
         </div>
         <div className="wbs-filter-group">

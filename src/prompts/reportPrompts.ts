@@ -3,7 +3,17 @@ export const buildWeeklyReportPrompt = (minutesText: string, templateText?: stri
     ? `以下のテンプレートのフォーマットに厳密に従って出力してください。\n\n【出力テンプレート】\n${templateText}\n\n`
     : '今週の週報（サマリー、主な進捗、次週の課題）をマークダウン形式で作成してください。\n\n';
 
-  return `以下の今週の複数の会議議事録要約を元に、週報を作成してください。\n${templateInstruction}【議事録要約群】\n${minutesText}`;
+  return `以下の今週の複数の会議議事録要約を元に、週報を作成してください。
+
+${templateInstruction}
+
+【記述のレイアウト・フォーマットに関する重要指示】
+- 週報内にテキストを記述する際は、1行あたり半角70文字（全角35文字）程度で適切に改行（折り返し）を行ってください。
+- 改行する際は、その項目や箇条書きのインデント（行頭の半角スペースによるインデント幅）を崩さず、開始位置（インデント）を揃えて次の行を書き出してください。
+  （例：行頭に半角スペース4つのインデントがある場合は、折り返した後の行も同様に半角スペース4つ分を空けて開始する）
+
+【議事録要約群】
+${minutesText}`;
 };
 
 export const WEEKLY_REPORT_TEMPLATE = `【秘密】関係者外秘
@@ -74,6 +84,7 @@ export interface ProjectLike {
   id: string;
   name: string;
   stakeholders?: string[];
+  isClosed?: boolean;
 }
 
 export interface TeamMemberLike {
@@ -112,9 +123,10 @@ export const buildWeeklyReportTxt = (projects: ProjectLike[], members: TeamMembe
 
   const memberMap = new Map<string, TeamMemberLike>(members.map(m => [m.id, m]));
 
-  // 2. For PJ遂行状況
+  // 2. For PJ遂行状況 (exclude closed and 間接作業)
+  const activeProjects = projects.filter(pj => !pj.isClosed && pj.name !== '間接作業');
   const pjSections: string[] = [];
-  projects.forEach(pj => {
+  activeProjects.forEach(pj => {
     // get assignees of this project that are internal
     const assignedInternalMembers = (pj.stakeholders || [])
       .map(id => memberMap.get(id))
@@ -138,8 +150,8 @@ export const buildWeeklyReportTxt = (projects: ProjectLike[], members: TeamMembe
 
   const pjStatusText = pjSections.length > 0 ? pjSections.join('\n\n') : '  特になし';
 
-  // 3. For 稼働状況
-  const runningPjs = projects.map(pj => `    ・${pj.name}`).join('\n');
+  // 3. For 稼働状況 (also exclude closed and 間接作業)
+  const runningPjs = activeProjects.map(pj => `    ・${pj.name}`).join('\n');
   const workloadText = runningPjs || '    ・特になし';
 
   // 4. Replace placeholders

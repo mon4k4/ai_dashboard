@@ -9,11 +9,19 @@ export default function Report() {
   const { minutes, reports, addReport, projects, members } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
 
-  // 直近7日間の議事録を対象とする
+  // 直近7日間の議事録を対象とし、かつクローズ済みおよび間接作業プロジェクトは除外する
   const recentMinutes = minutes.filter(m => {
     const minDate = new Date(m.date);
     const aWeekAgo = subDays(new Date(), 7);
-    return minDate >= aWeekAgo;
+    if (minDate < aWeekAgo) return false;
+
+    if (m.projectId) {
+      const proj = projects.find(p => p.id === m.projectId);
+      if (proj && (proj.isClosed || proj.name === '間接作業')) {
+        return false;
+      }
+    }
+    return true;
   });
 
   const handleGenerate = async () => {

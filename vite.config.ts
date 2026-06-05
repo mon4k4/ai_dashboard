@@ -1431,7 +1431,17 @@ function backendPlugin() {
             const templateInstruction = templateText
               ? `以下のテンプレートのフォーマットに厳密に従って出力してください。\n\n【出力テンプレート】\n${templateText}\n\n`
               : '今週の週報（サマリー、主な進捗、次週の課題）をマークダウン形式で作成してください。\n\n';
-            const prompt = `以下の今週の複数の会議議事録要約を元に、週報を作成してください。\n${templateInstruction}【議事録要約群】\n${minutesText}`;
+            const prompt = `以下の今週の複数の会議議事録要約を元に、週報を作成してください。
+
+${templateInstruction}
+
+【記述のレイアウト・フォーマットに関する重要指示】
+- 週報内にテキストを記述する際は、1行あたり半角70文字（全角35文字）程度で適切に改行（折り返し）を行ってください。
+- 改行する際は、その項目や箇条書きのインデント（行頭の半角スペースによるインデント幅）を崩さず、開始位置（インデント）を揃えて次の行を書き出してください。
+  （例：行頭に半角スペース4つのインデントがある場合は、折り返した後の行も同様に半角スペース4つ分を空けて開始する）
+
+【議事録要約群】
+${minutesText}`;
             const endpoint = llmEndpoint || 'http://localhost:8080/v1';
             const result = await callLlm(endpoint, [{ role: 'user', content: prompt }], '週報生成', 0.3);
             res.setHeader('Content-Type', 'application/json');
