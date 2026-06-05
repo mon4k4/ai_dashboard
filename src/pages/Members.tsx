@@ -1,14 +1,46 @@
 import { useState, useMemo } from 'react';
-import { Users, Plus, Trash2, Wand2, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { Users, Plus, Trash2, Wand2, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 export default function Members() {
-  const { members, addMember, updateMember, deleteMember, moveMember, pendingMembers, clearPendingMembers } = useAppContext();
+  const { members, addMember, updateMember, deleteMember, reorderMembers, pendingMembers, clearPendingMembers } = useAppContext();
   const [newName, setNewName] = useState('');
   const [newGroup, setNewGroup] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newIsInternal, setNewIsInternal] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [draggedGroup, setDraggedGroup] = useState<string | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [draggableRowId, setDraggableRowId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, idx: number, group: string) => {
+    setDraggedIdx(idx);
+    setDraggedGroup(group);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number, group: string) => {
+    e.preventDefault();
+    if (draggedGroup !== group || draggedIdx === null) return;
+    setDragOverIdx(idx);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIdx: number, group: string) => {
+    e.preventDefault();
+    if (draggedGroup === group && draggedIdx !== null && draggedIdx !== targetIdx) {
+      reorderMembers(group, draggedIdx, targetIdx);
+    }
+    handleDragEnd();
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null);
+    setDraggedGroup(null);
+    setDragOverIdx(null);
+    setDraggableRowId(null);
+  };
 
   const handleAdd = () => {
     if (!newName.trim()) return;
@@ -228,80 +260,93 @@ export default function Members() {
                   </span>
                 </div>
 
-                {/* Group Members Table */}
                 {!isCollapsed && (
                   <table style={styles.table}>
                     <thead>
                       <tr>
-                        <th style={{ ...styles.th, width: '30%' }}>名前</th>
+                        <th style={{ ...styles.th, width: '6%', textAlign: 'center' }}></th>
+                        <th style={{ ...styles.th, width: '29%' }}>名前</th>
                         <th style={{ ...styles.th, width: '15%' }}>役職</th>
                         <th style={{ ...styles.th, width: '10%', textAlign: 'center' }}>内部</th>
                         <th style={{ ...styles.th, width: '25%' }}>グループ</th>
-                        <th style={{ ...styles.th, width: '20%', textAlign: 'center' }}>操作</th>
+                        <th style={{ ...styles.th, width: '15%', textAlign: 'center' }}>操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {groupList.map((member, idx) => (
-                        <tr key={member.id} style={styles.tr}>
-                          <td style={styles.td}>
-                            <input 
-                              value={member.name}
-                              onChange={e => updateMember(member.id, { name: e.target.value })}
-                              style={styles.ghostInput}
-                            />
-                          </td>
-                          <td style={styles.td}>
-                            <input 
-                              value={member.title || ''}
-                              onChange={e => updateMember(member.id, { title: e.target.value || undefined })}
-                              style={{ ...styles.ghostInput, textAlign: 'center' }}
-                              placeholder="—"
-                            />
-                          </td>
-                          <td style={{ ...styles.td, textAlign: 'center' }}>
-                            <input 
-                              type="checkbox"
-                              checked={member.isInternal ?? false}
-                              onChange={e => updateMember(member.id, { isInternal: e.target.checked })}
-                              style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-                            />
-                          </td>
-                          <td style={styles.td}>
-                            <input 
-                              value={member.group}
-                              onChange={e => updateMember(member.id, { group: e.target.value })}
-                              style={styles.ghostInput}
-                            />
-                          </td>
-                          <td style={{ ...styles.td, textAlign: 'center' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.25rem' }}>
-                              <button 
-                                onClick={() => moveMember(member.id, 'up')}
-                                disabled={idx === 0}
-                                style={{ ...styles.iconBtn, color: idx === 0 ? 'var(--text-muted)' : 'var(--accent-primary)', opacity: idx === 0 ? 0.3 : 1 }}
-                                title="上に移動"
+                      {groupList.map((member, idx) => {
+                        const isDragging = draggedGroup === groupName && draggedIdx === idx;
+                        const isDragOver = draggedGroup === groupName && dragOverIdx === idx && draggedIdx !== idx;
+                        return (
+                          <tr 
+                            key={member.id} 
+                            style={{ 
+                              ...styles.tr,
+                              opacity: isDragging ? 0.4 : 1,
+                              borderTop: isDragOver && dragOverIdx < (draggedIdx ?? 0) ? '2px solid var(--accent-primary)' : undefined,
+                              borderBottom: isDragOver && dragOverIdx > (draggedIdx ?? 0) ? '2px solid var(--accent-primary)' : undefined,
+                              background: isDragging ? 'rgba(255,255,255,0.02)' : undefined,
+                              transition: 'all 0.1s ease',
+                            }}
+                            draggable={draggableRowId === member.id}
+                            onDragStart={(e) => handleDragStart(e, idx, groupName)}
+                            onDragOver={(e) => handleDragOver(e, idx, groupName)}
+                            onDrop={(e) => handleDrop(e, idx, groupName)}
+                            onDragEnd={handleDragEnd}
+                          >
+                            <td style={{ ...styles.td, textAlign: 'center' }}>
+                              <div
+                                onMouseDown={() => setDraggableRowId(member.id)}
+                                onMouseUp={() => setDraggableRowId(null)}
+                                style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', cursor: 'grab', padding: '0.2rem' }}
+                                title="ドラッグして並び替え"
                               >
-                                <ArrowUp size={14} />
-                              </button>
-                              <button 
-                                onClick={() => moveMember(member.id, 'down')}
-                                disabled={idx === groupList.length - 1}
-                                style={{ ...styles.iconBtn, color: idx === groupList.length - 1 ? 'var(--text-muted)' : 'var(--accent-primary)', opacity: idx === groupList.length - 1 ? 0.3 : 1 }}
-                                title="下に移動"
-                              >
-                                <ArrowDown size={14} />
-                              </button>
-                              <button 
-                                onClick={() => deleteMember(member.id)}
-                                style={{ ...styles.iconBtn, color: '#ef4444' }}
-                                title="削除"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                <GripVertical size={16} />
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <input 
+                                value={member.name}
+                                onChange={e => updateMember(member.id, { name: e.target.value })}
+                                style={styles.ghostInput}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input 
+                                value={member.title || ''}
+                                onChange={e => updateMember(member.id, { title: e.target.value || undefined })}
+                                style={{ ...styles.ghostInput, textAlign: 'center' }}
+                                placeholder="—"
+                              />
+                            </td>
+                            <td style={{ ...styles.td, textAlign: 'center' }}>
+                              <input 
+                                type="checkbox"
+                                checked={member.isInternal ?? false}
+                                onChange={e => updateMember(member.id, { isInternal: e.target.checked })}
+                                style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                              />
+                            </td>
+                            <td style={styles.td}>
+                              <input 
+                                value={member.group}
+                                onChange={e => updateMember(member.id, { group: e.target.value })}
+                                style={styles.ghostInput}
+                              />
+                            </td>
+                            <td style={{ ...styles.td, textAlign: 'center' }}>
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: '0.25rem' }}>
+                                <button 
+                                  onClick={() => deleteMember(member.id)}
+                                  style={{ ...styles.iconBtn, color: '#ef4444' }}
+                                  title="削除"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

@@ -48,6 +48,7 @@ interface AppState {
   updateMember: (id: string, updates: Partial<TeamMember>) => void;
   deleteMember: (id: string) => void;
   moveMember: (id: string, direction: 'up' | 'down') => void;
+  reorderMembers: (group: string, fromIdx: number, toIdx: number) => void;
   addReport: (report: WeeklyReport) => void;
   updateReport: (id: string, updates: Partial<WeeklyReport>) => void;
   settings: Record<string, string>;
@@ -423,6 +424,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const reorderMembers = useCallback((group: string, fromIdx: number, toIdx: number) => {
+    setMembers(prev => {
+      const groupMembers = prev
+        .filter(m => m.group === group)
+        .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+      const updatedList = [...groupMembers];
+      const [removed] = updatedList.splice(fromIdx, 1);
+      updatedList.splice(toIdx, 0, removed);
+
+      const updatedGroupMembers = updatedList.map((m, index) => ({
+        ...m,
+        order: index
+      }));
+
+      const otherGroupMembers = prev.filter(m => m.group !== group);
+      return [...otherGroupMembers, ...updatedGroupMembers];
+    });
+  }, []);
+
   const clearPendingMembers = useCallback((minuteTitle?: string) => {
     if (minuteTitle) {
       setPendingMembers(prev => prev.filter(g => g.minuteTitle !== minuteTitle));
@@ -470,7 +491,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
       addTask, updateTask, commitTask, deleteTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject, moveProject,
-      addMember, updateMember, deleteMember, moveMember, addReport, updateReport, clearPendingMembers, addPendingMembers,
+      addMember, updateMember, deleteMember, moveMember, reorderMembers, addReport, updateReport, clearPendingMembers, addPendingMembers,
       settings, saveSettings
     }}>
       {children}

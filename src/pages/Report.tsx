@@ -3,7 +3,7 @@ import { useAppContext } from '../store/AppContext';
 import { FileBarChart, Loader2, RefreshCw, FileText } from 'lucide-react';
 import { subDays, format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
-import { buildWeeklyReportTxt, WEEKLY_REPORT_TEMPLATE } from '../prompts/reportPrompts';
+import { buildWeeklyReportTxt } from '../prompts/reportPrompts';
 
 export default function Report() {
   const { minutes, reports, addReport, projects, members } = useAppContext();
@@ -24,24 +24,45 @@ export default function Report() {
     
     setIsLoading(true);
     try {
+      // 1. Update the template based on current projects and members
+      const customTemplate = buildWeeklyReportTxt(projects, members);
+
       const minutesText = recentMinutes.map(m => `■${m.date} ${m.title}\n${m.summary}`).join('\n\n');
       const llmEndpoint = localStorage.getItem('llmEndpoint') || 'http://localhost:8080/v1';
+
+      // 2. Automatically generate the report via LLM using the updated template
       const res = await fetch('/api/report/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ minutesText, templateText: WEEKLY_REPORT_TEMPLATE, llmEndpoint }),
+        body: JSON.stringify({ minutesText, templateText: customTemplate, llmEndpoint }),
       });
       if (!res.ok) throw new Error('Report generation failed');
       const data = await res.json();
       
+      const generatedContent = data.output;
+
+      // 3. Render / save in context (which draws it on the page)
       addReport({
         id: `report-${Date.now()}`,
         date: format(new Date(), 'yyyy-MM-dd'),
-        content: data.output,
+        content: generatedContent,
       });
+
+      // 4. Automatically export the generated report to a text file
+      const outputDir = localStorage.getItem('reportOutputDir') || './exports';
+      const exportRes = await fetch('/api/report/export-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: generatedContent, outputDir }),
+      });
+      
+      if (!exportRes.ok) throw new Error('Failed to export txt report automatically');
+      const exportData = await exportRes.json();
+
+      alert(`週報の自動生成が完了し、テキストファイルを保存しました:\n${exportData.filePath}`);
     } catch (err) {
       console.error(err);
-      alert('週報の生成に失敗しました。');
+      alert('週報の生成またはテキスト保存に失敗しました。');
     } finally {
       setIsLoading(false);
     }
