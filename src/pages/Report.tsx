@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { FileBarChart, Loader2, RefreshCw, FileText } from 'lucide-react';
+import { FileBarChart, Loader2, RefreshCw } from 'lucide-react';
 import { subDays, format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { buildWeeklyReportTxt } from '../prompts/reportPrompts';
@@ -68,23 +68,7 @@ export default function Report() {
     }
   };
 
-  const handleExportTxt = async () => {
-    try {
-      const content = buildWeeklyReportTxt(projects, members);
-      const outputDir = localStorage.getItem('reportOutputDir') || './exports';
-      const res = await fetch('/api/report/export-txt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, outputDir }),
-      });
-      if (!res.ok) throw new Error('Failed to export txt report');
-      const data = await res.json();
-      alert(`週報テキストファイルを保存しました:\n${data.filePath}`);
-    } catch (err) {
-      console.error(err);
-      alert('週報テキストファイルの保存に失敗しました。');
-    }
-  };
+
 
   // 年月でグループ化
   const grouped = reports.reduce((acc, r) => {
@@ -117,26 +101,6 @@ export default function Report() {
           >
             {isLoading ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />}
             週報を生成する
-          </button>
-        </div>
-
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }} />
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>週報のテキストファイル出力 (.txt)</h3>
-            <p style={{ margin: 0, color: 'var(--text-muted)' }}>
-              プロジェクトとメンバー情報からテンプレートを埋め込み、週報テキストファイルを出力します。
-            </p>
-          </div>
-          
-          <button 
-            className="btn-secondary" 
-            onClick={handleExportTxt}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <FileText size={18} />
-            週報テキストを出力
           </button>
         </div>
       </div>
