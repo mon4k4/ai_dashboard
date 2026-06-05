@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useAppContext } from '../store/AppContext';
-import { FileBarChart, Loader2, RefreshCw } from 'lucide-react';
+import { FileBarChart, Loader2, RefreshCw, FileText } from 'lucide-react';
 import { subDays, format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { buildWeeklyReportTxt, WEEKLY_REPORT_TEMPLATE } from '../prompts/reportPrompts';
 
 export default function Report() {
-  const { minutes, reports, addReport } = useAppContext();
+  const { minutes, reports, addReport, projects, members } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
 
   // 直近7日間の議事録を対象とする
@@ -23,23 +24,12 @@ export default function Report() {
     
     setIsLoading(true);
     try {
-      let templateText = undefined;
-      const templatePath = localStorage.getItem('reportTemplatePath');
-      if (templatePath) {
-        const res = await fetch(`/api/file/read?path=${encodeURIComponent(templatePath)}`);
-        if (res.ok) {
-          templateText = await res.text();
-        } else {
-          console.warn('Failed to load template file. Proceeding without template.');
-        }
-      }
-      
       const minutesText = recentMinutes.map(m => `■${m.date} ${m.title}\n${m.summary}`).join('\n\n');
       const llmEndpoint = localStorage.getItem('llmEndpoint') || 'http://localhost:8080/v1';
       const res = await fetch('/api/report/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ minutesText, templateText, llmEndpoint }),
+        body: JSON.stringify({ minutesText, templateText: WEEKLY_REPORT_TEMPLATE, llmEndpoint }),
       });
       if (!res.ok) throw new Error('Report generation failed');
       const data = await res.json();
@@ -54,6 +44,24 @@ export default function Report() {
       alert('週報の生成に失敗しました。');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExportTxt = async () => {
+    try {
+      const content = buildWeeklyReportTxt(projects, members);
+      const outputDir = localStorage.getItem('reportOutputDir') || './exports';
+      const res = await fetch('/api/report/export-txt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, outputDir }),
+      });
+      if (!res.ok) throw new Error('Failed to export txt report');
+      const data = await res.json();
+      alert(`週報テキストファイルを保存しました:\n${data.filePath}`);
+    } catch (err) {
+      console.error(err);
+      alert('週報テキストファイルの保存に失敗しました。');
     }
   };
 
@@ -72,22 +80,44 @@ export default function Report() {
         Weekly Report
       </h2>
 
-      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.5rem', flexShrink: 0 }}>
-        <div>
-          <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>週報の自動生成</h3>
-          <p style={{ margin: 0, color: 'var(--text-muted)' }}>
-            直近7日間（{recentMinutes.length}件）の議事録要約を元に、今週の週報を作成します。
-          </p>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>週報の自動生成 (Markdown)</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+              直近7日間（{recentMinutes.length}件）の議事録要約を元に、今週の週報を作成します。
+            </p>
+          </div>
+          
+          <button 
+            className="btn-primary" 
+            onClick={handleGenerate} 
+            disabled={isLoading || recentMinutes.length === 0}
+          >
+            {isLoading ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />}
+            週報を生成する
+          </button>
         </div>
-        
-        <button 
-          className="btn-primary" 
-          onClick={handleGenerate} 
-          disabled={isLoading || recentMinutes.length === 0}
-        >
-          {isLoading ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />}
-          週報を生成する
-        </button>
+
+        <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: 0, marginBottom: '0.5rem' }}>週報のテキストファイル出力 (.txt)</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+              プロジェクトとメンバー情報からテンプレートを埋め込み、週報テキストファイルを出力します。
+            </p>
+          </div>
+          
+          <button 
+            className="btn-secondary" 
+            onClick={handleExportTxt}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <FileText size={18} />
+            週報テキストを出力
+          </button>
+        </div>
       </div>
 
       {isLoading && (

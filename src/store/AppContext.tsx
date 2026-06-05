@@ -47,6 +47,7 @@ interface AppState {
   addMember: (member: TeamMember) => void;
   updateMember: (id: string, updates: Partial<TeamMember>) => void;
   deleteMember: (id: string) => void;
+  moveMember: (id: string, direction: 'up' | 'down') => void;
   addReport: (report: WeeklyReport) => void;
   updateReport: (id: string, updates: Partial<WeeklyReport>) => void;
   settings: Record<string, string>;
@@ -400,6 +401,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMembers(prev => prev.filter(m => m.id !== id));
   }, []);
 
+  const moveMember = useCallback((id: string, direction: 'up' | 'down') => {
+    setMembers(prev => {
+      const member = prev.find(m => m.id === id);
+      if (!member) return prev;
+      // Get members in the same group, sorted by order
+      const groupMembers = prev
+        .filter(m => m.group === member.group)
+        .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+      const idx = groupMembers.findIndex(m => m.id === id);
+      if (idx === -1) return prev;
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= groupMembers.length) return prev;
+      const swapMember = groupMembers[swapIdx];
+      // Swap orders
+      return prev.map(m => {
+        if (m.id === member.id) return { ...m, order: swapMember.order ?? swapIdx };
+        if (m.id === swapMember.id) return { ...m, order: member.order ?? idx };
+        return m;
+      });
+    });
+  }, []);
+
   const clearPendingMembers = useCallback((minuteTitle?: string) => {
     if (minuteTitle) {
       setPendingMembers(prev => prev.filter(g => g.minuteTitle !== minuteTitle));
@@ -447,7 +470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
       addTask, updateTask, commitTask, deleteTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject, moveProject,
-      addMember, updateMember, deleteMember, addReport, updateReport, clearPendingMembers, addPendingMembers,
+      addMember, updateMember, deleteMember, moveMember, addReport, updateReport, clearPendingMembers, addPendingMembers,
       settings, saveSettings
     }}>
       {children}

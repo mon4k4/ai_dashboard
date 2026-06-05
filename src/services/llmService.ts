@@ -53,6 +53,9 @@ export interface TeamMember {
   id: string;
   name: string;
   group: string;
+  title?: string; // 役職 (例: T, M, PL)
+  isInternal?: boolean; // 内部メンバーフラグ
+  order?: number; // グループ内の表示順
 }
 
 export interface MinuteSummary {

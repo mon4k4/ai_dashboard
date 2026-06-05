@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Server, Folder, FileText, User, Clock, Palette } from 'lucide-react';
+import { Save, Server, Folder, User, Clock, Palette } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 export default function Settings() {
@@ -9,7 +9,7 @@ export default function Settings() {
   const [imageDir, setImageDir] = useState('/Users/monaka/Pictures/Screenshots');
   const [minutesDir, setMinutesDir] = useState('./議事録一覧');
   const [wbsExcelOutputDir, setWbsExcelOutputDir] = useState('./exports');
-  const [reportTemplatePath, setReportTemplatePath] = useState('');
+  const [reportOutputDir, setReportOutputDir] = useState('');
   const [myName, setMyName] = useState('');
   const [monthlyWorkload, setMonthlyWorkload] = useState('155');
   const [colorContrastMode, setColorContrastMode] = useState('auto');
@@ -22,7 +22,7 @@ export default function Settings() {
     if (settings.imageDir) setImageDir(settings.imageDir);
     if (settings.minutesDir) setMinutesDir(settings.minutesDir);
     if (settings.wbsExcelOutputDir) setWbsExcelOutputDir(settings.wbsExcelOutputDir);
-    if (settings.reportTemplatePath) setReportTemplatePath(settings.reportTemplatePath);
+    if (settings.reportOutputDir) setReportOutputDir(settings.reportOutputDir);
     if (settings.myName) setMyName(settings.myName);
     if (settings.monthlyWorkload) setMonthlyWorkload(settings.monthlyWorkload);
     if (settings.colorContrastMode) setColorContrastMode(settings.colorContrastMode);
@@ -35,7 +35,7 @@ export default function Settings() {
       imageDir,
       minutesDir,
       wbsExcelOutputDir,
-      reportTemplatePath,
+      reportOutputDir,
       myName,
       monthlyWorkload,
       colorContrastMode
@@ -125,17 +125,17 @@ export default function Settings() {
 
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            <FileText size={18} />
-            週報テンプレートファイルパス
+            <Folder size={18} />
+            週報テキスト出力先ディレクトリ
           </label>
           <input 
             type="text" 
-            value={reportTemplatePath}
-            onChange={(e) => setReportTemplatePath(e.target.value)}
-            placeholder="/Users/username/Projects/template.md"
+            value={reportOutputDir}
+            onChange={(e) => setReportOutputDir(e.target.value)}
+            placeholder="./exports"
             style={styles.input}
           />
-          <p style={styles.helpText}>LLMに週報のフォーマットを指示するためのテンプレートファイルの絶対パスを指定してください。</p>
+          <p style={styles.helpText}>週報テキストファイルを出力するディレクトリパスを指定してください。相対パスはプロジェクトフォルダ基準です。</p>
         </div>
 
         <div style={styles.formGroup}>

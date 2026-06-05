@@ -1362,6 +1362,30 @@ function resolveWbsOutputDir(requestedOutputDir) {
   return path.join(process.cwd(), 'exports');
 }
 
+function resolveReportOutputDir(requestedOutputDir) {
+  if (requestedOutputDir && String(requestedOutputDir).trim()) {
+    return path.isAbsolute(requestedOutputDir)
+      ? requestedOutputDir
+      : path.resolve(process.cwd(), requestedOutputDir);
+  }
+
+  const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (settings.reportOutputDir) {
+        return path.isAbsolute(settings.reportOutputDir)
+          ? settings.reportOutputDir
+          : path.resolve(process.cwd(), settings.reportOutputDir);
+      }
+    } catch (e) {
+      debugLog(`[report-export] Failed to read settings: ${e.message}`);
+    }
+  }
+
+  return path.join(process.cwd(), 'exports');
+}
+
 // ====== Vite Plugin ======
 function backendPlugin() {
   return {
@@ -1448,6 +1472,37 @@ function backendPlugin() {
             });
 
             fs.writeFileSync(filePath, workbookBuffer);
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, filePath }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+
+        // Weekly Report Export TXT
+        if (req.url === '/api/report/export-txt' && req.method === 'POST') {
+          try {
+            const body = await parseBody(req);
+            const outputDir = resolveReportOutputDir(body.outputDir);
+            fs.mkdirSync(outputDir, { recursive: true });
+
+            // File naming: 週報_川畑T_曽根_yyyymmdd.txt
+            const jstString = new Date().toLocaleString("ja-JP", {timeZone: "Asia/Tokyo"});
+            const match = jstString.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+            let yyyymmdd = '';
+            if (match) {
+              yyyymmdd = match[1] + match[2].padStart(2, '0') + match[3].padStart(2, '0');
+            } else {
+              const d = new Date();
+              yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+            }
+
+            const filePath = path.join(outputDir, `週報_川畑T_曽根_${yyyymmdd}.txt`);
+            fs.writeFileSync(filePath, body.content || '', 'utf-8');
+
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true, filePath }));
           } catch (e) {
