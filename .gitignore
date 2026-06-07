@@ -28,4 +28,3 @@ dist-ssr
 data/
 debug.log
 exports/
-src/prompts/*
