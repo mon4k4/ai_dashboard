@@ -197,7 +197,7 @@ export default function Members() {
             value={newGroup}
             onChange={e => setNewGroup(e.target.value)}
             style={styles.input}
-            placeholder="例: 川畑チーム"
+            placeholder="例: AAチーム"
           />
         </div>
         <div style={{ flex: '0 1 80px', minWidth: '80px' }}>

@@ -1499,7 +1499,7 @@ ${minutesText}`;
             const outputDir = resolveReportOutputDir(body.outputDir);
             fs.mkdirSync(outputDir, { recursive: true });
 
-            // File naming: 週報_川畑T_曽根_yyyymmdd.txt
+
             const jstString = new Date().toLocaleString("ja-JP", {timeZone: "Asia/Tokyo"});
             const match = jstString.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
             let yyyymmdd = '';
@@ -1510,7 +1510,35 @@ ${minutesText}`;
               yyyymmdd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
             }
 
-            const filePath = path.join(outputDir, `週報_川畑T_曽根_${yyyymmdd}.txt`);
+            // 設定とメンバーデータから動的にファイル名を構築
+            let mySurname = '';
+            let managerSurname = '';
+            try {
+              const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
+              const membersPath = path.join(process.cwd(), 'data', 'members.json');
+              if (fs.existsSync(settingsPath) && fs.existsSync(membersPath)) {
+                const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+                const allMembers = JSON.parse(fs.readFileSync(membersPath, 'utf-8'));
+                const myNameValue = settings.myName || '';
+                // myName はメンバーIDまたは名前で格納される場合がある
+                const myMember = allMembers.find(m => m.id === myNameValue)
+                  || allMembers.find(m => m.name === myNameValue);
+                if (myMember) {
+                  // 苗字を取得（スペース区切りの最初の部分）
+                  mySurname = myMember.name.split(/\s+/)[0];
+                  // 同じグループで役割が 'M' のメンバーを検索
+                  const manager = allMembers.find(m => m.group === myMember.group && m.title === 'M' && m.id !== myMember.id);
+                  if (manager) {
+                    managerSurname = manager.name.split(/\s+/)[0];
+                  }
+                }
+              }
+            } catch (e) {
+              debugLog(`[report-export] Failed to resolve member names: ${e.message}`);
+            }
+            const managerPart = managerSurname ? `${managerSurname}T` : '未設定T';
+            const myPart = mySurname || '未設定';
+            const filePath = path.join(outputDir, `週報_${managerPart}_${myPart}_${yyyymmdd}.txt`);
             fs.writeFileSync(filePath, body.content || '', 'utf-8');
 
             res.setHeader('Content-Type', 'application/json');
