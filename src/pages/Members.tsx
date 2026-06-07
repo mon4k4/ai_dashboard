@@ -187,7 +187,7 @@ export default function Members() {
             value={newName}
             onChange={e => setNewName(e.target.value)}
             style={styles.input}
-            placeholder="例: 曽根 雄太"
+            placeholder="例: BB CC"
           />
         </div>
         <div style={{ flex: '1 1 100px', minWidth: '100px' }}>
