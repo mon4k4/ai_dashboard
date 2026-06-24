@@ -18,6 +18,13 @@ export interface TaskExtractResult {
   wbsOrder?: number;
   actionResult?: string; // 対応結果
   parentId?: string; // 親タスクID
+  isGroup?: boolean; // WBS上のグループフラグ
+  pendingUpdates?: {
+    details?: string;
+    actionResult?: string;
+    status?: 'todo' | 'in-progress' | 'done';
+    progress?: number;
+  }; // 保留中の更新内容
 }
 
 export interface Project {

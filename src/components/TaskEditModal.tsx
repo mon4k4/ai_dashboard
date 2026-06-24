@@ -26,7 +26,6 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
     : undefined;
   if (!task) return null;
 
-  const projectTasks = tasks.filter(t => t.projectId === task.projectId);
 
   // プロジェクト関係者による担当者フィルタリング
   const selectedProject = projects.find(p => p.id === task.projectId);
@@ -43,25 +42,6 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
       displayMembers.push(currentMember);
     }
   }
-
-  // 循環参照を防ぐための親候補フィルタリング
-  const getValidParentOptions = () => {
-    const descendants = new Set<string>();
-    const findDescendants = (pid: string) => {
-      projectTasks.forEach(t => {
-        if (t.parentId === pid) {
-          descendants.add(t.id);
-          findDescendants(t.id);
-        }
-      });
-    };
-    findDescendants(task.id);
-    return projectTasks.filter(t => 
-      t.id !== task.id && 
-      !descendants.has(t.id)
-    );
-  };
-
   const childTasks = tasks.filter(t => t.parentId === task.id);
 
   const getStatusColorBg = (status: string) => {
@@ -276,22 +256,7 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
             </div>
           </div>
 
-          {/* 親タスクの設定プルダウン */}
-          {task.projectId && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>親タスクの設定</label>
-              <select
-                value={task.parentId || ''}
-                onChange={e => updateTask(task.id, { parentId: e.target.value || undefined })}
-                style={styles.input}
-              >
-                <option value="">-- なし (最上位タスク) --</option>
-                {getValidParentOptions().map(p => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
-                ))}
-              </select>
-            </div>
-          )}
+
 
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>

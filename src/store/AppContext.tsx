@@ -56,11 +56,22 @@ interface AppState {
   pendingMembers: PendingMemberGroup[];
   clearPendingMembers: (minuteTitle?: string) => void;
   addPendingMembers: (minuteTitle: string, names: string[]) => void;
+  commitTaskUpdate: (id: string, editedFields?: Partial<TaskExtractResult>) => void;
+  rejectTaskUpdate: (id: string) => void;
+  pendingProjectAssociations: PendingProjectAssociation[];
+  removePendingProjectAssociation: (minuteId: string) => void;
 }
 
 export interface PendingMemberGroup {
   minuteTitle: string;
   names: string[];
+}
+
+export interface PendingProjectAssociation {
+  minuteId: string;
+  title: string;
+  filename: string;
+  content: string;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -119,6 +130,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isProcessing: false, currentFile: null, processedCount: 0, totalCount: 0, message: ''
   });
   const [pendingMembers, setPendingMembers] = useState<PendingMemberGroup[]>([]);
+  const [pendingProjectAssociations, setPendingProjectAssociations] = useState<PendingProjectAssociation[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const sseRef = useRef<EventSource | null>(null);
 
@@ -215,12 +227,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       es.addEventListener('task_created', (e: MessageEvent) => {
         const task = JSON.parse(e.data);
-        setTasks(prev => prev.some(t => t.id === task.id) ? prev : [...prev, task]);
+        setTasks(prev => prev.some(t => t.id === task.id) ? prev.map(t => t.id === task.id ? { ...t, ...task } : t) : [...prev, task]);
+      });
+
+      es.addEventListener('task_updated', (e: MessageEvent) => {
+        const task = JSON.parse(e.data);
+        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t));
       });
 
       es.addEventListener('minute_created', (e: MessageEvent) => {
         const minute = JSON.parse(e.data);
-        setMinutes(prev => prev.some(m => m.id === minute.id) ? prev : [minute, ...prev]);
+        setMinutes(prev => prev.some(m => m.id === minute.id) ? prev.map(m => m.id === minute.id ? { ...m, ...minute } : m) : [minute, ...prev]);
+      });
+
+      es.addEventListener('project_association_needed', (e: MessageEvent) => {
+        const association = JSON.parse(e.data);
+        setPendingProjectAssociations(prev => {
+          if (prev.some(p => p.minuteId === association.minuteId)) return prev;
+          return [...prev, association];
+        });
       });
 
       es.addEventListener('batch_status', (e: MessageEvent) => {
@@ -486,13 +511,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const commitTaskUpdate = useCallback((id: string, editedFields?: Partial<TaskExtractResult>) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id === id) {
+        const { pendingUpdates, ...rest } = t;
+        const updates = { ...pendingUpdates, ...editedFields };
+        return { ...rest, ...updates };
+      }
+      return t;
+    }));
+  }, []);
+
+  const rejectTaskUpdate = useCallback((id: string) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id === id) {
+        const { pendingUpdates, ...rest } = t;
+        return rest;
+      }
+      return t;
+    }));
+  }, []);
+
+  const removePendingProjectAssociation = useCallback((minuteId: string) => {
+    setPendingProjectAssociations(prev => prev.filter(p => p.minuteId !== minuteId));
+  }, []);
+
   return (
     <AppContext.Provider value={{ 
       tasks, minutes, projects, members, reports, llmLogs, batchStatus, pendingMembers,
       addTask, updateTask, commitTask, deleteTask, reorderTasks, addMinute, updateMinute,
       addProject, updateProject, deleteProject, moveProject,
       addMember, updateMember, deleteMember, moveMember, reorderMembers, addReport, updateReport, clearPendingMembers, addPendingMembers,
-      settings, saveSettings
+      settings, saveSettings,
+      commitTaskUpdate, rejectTaskUpdate,
+      pendingProjectAssociations, removePendingProjectAssociation
     }}>
       {children}
     </AppContext.Provider>

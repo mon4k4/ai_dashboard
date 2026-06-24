@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Edit2, ChevronDown, Calendar, Users, FolderTree, Filter, Download } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Users, FolderTree, Filter, Download, GripVertical } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -13,6 +13,7 @@ interface TaskNode {
 export default function WBS() {
   const { tasks, projects, members, settings, addTask, updateTask, deleteTask } = useAppContext();
   
+  // クローズ済みのプロジェクト非表示設定
   const [hideClosedProjects, setHideClosedProjects] = useState(() => {
     return localStorage.getItem('wbs_hideClosedProjects') === 'true';
   });
@@ -32,7 +33,7 @@ export default function WBS() {
   });
   const hasUserSelectedProject = useRef(false);
 
-  // 折りたたみ状態 (localStorageに保存)
+  // 子タスクの折りたたみ状態 (localStorageに保存)
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem('wbsCollapsedTaskIds');
@@ -52,6 +53,15 @@ export default function WBS() {
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
   const [filterMemberId, setFilterMemberId] = useState<string>('');
 
+  // ドラッグ＆ドロップ用ステート
+  const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+
+  // 各プロジェクト内でのカード順序
+  const [cardOrder, setCardOrder] = useState<string[]>([]);
+
   // プロジェクト一覧に変化があった場合の安全なフォールバック
   useEffect(() => {
     if (!hasUserSelectedProject.current && activeProjectId === null && activeProjects.length > 0) {
@@ -68,7 +78,19 @@ export default function WBS() {
     }
   }, [activeProjects, activeProjectId]);
 
-  // 折りたたみ状態をlocalStorageに保存するヘルパー
+  // プロジェクト切り替え時にカード順序を復元
+  useEffect(() => {
+    if (activeProjectId) {
+      const saved = localStorage.getItem(`wbs_card_order_${activeProjectId}`);
+      if (saved) {
+        try { setCardOrder(JSON.parse(saved)); } catch (e) { setCardOrder([]); }
+      } else {
+        setCardOrder([]);
+      }
+    }
+  }, [activeProjectId]);
+
+  // 子タスク折りたたみトグルのヘルパー
   const toggleCollapse = (taskId: string) => {
     setCollapsedTaskIds(prev => {
       const next = { ...prev, [taskId]: !prev[taskId] };
@@ -77,43 +99,46 @@ export default function WBS() {
     });
   };
 
-  // グループ（最上位の親タスク）の追加
+  // 最上位の親グループタスク（カード）の新規追加
   const handleAddGroup = () => {
+    if (!activeProjectId) {
+      alert('プロジェクトを選択してください。');
+      return;
+    }
     const newGroupId = `task-group-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // プロジェクトの最初の担当者をデフォルトにする
     let defaultAssignee = '';
     let defaultMemberId = '';
     
-    if (activeProjectId) {
-      const activeProj = projects.find(p => p.id === activeProjectId);
-      if (activeProj?.stakeholders && activeProj.stakeholders.length > 0) {
-        const firstMember = members.find(m => m.id === activeProj.stakeholders![0]);
-        if (firstMember) {
-          defaultAssignee = firstMember.name;
-          defaultMemberId = firstMember.id;
-        }
+    const activeProj = projects.find(p => p.id === activeProjectId);
+    if (activeProj?.stakeholders && activeProj.stakeholders.length > 0) {
+      const firstMember = members.find(m => m.id === activeProj.stakeholders![0]);
+      if (firstMember) {
+        defaultAssignee = firstMember.name;
+        defaultMemberId = firstMember.id;
       }
     }
 
     addTask({
       id: newGroupId,
-      title: '新しいタスクグループ',
+      title: '新しいグループ',
       status: 'todo',
-      projectId: activeProjectId || undefined,
+      projectId: activeProjectId,
       assignee: defaultAssignee,
       memberId: defaultMemberId || undefined,
       progress: 0,
-      isNew: false
+      isNew: false,
+      isGroup: true // 親グループとして定義
     });
   };
 
-  // 子タスクを追加するヘルパー
+  // 親グループまたは子タスク内へ新規タスク（子タスク）を追加
   const handleAddChild = (parentTask: TaskExtractResult) => {
     const newChildId = `task-child-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     addTask({
       id: newChildId,
-      title: '新しい子タスク',
+      title: '新しいタスク',
       status: 'todo',
       projectId: parentTask.projectId,
       parentId: parentTask.id,
@@ -133,6 +158,22 @@ export default function WBS() {
     }
   };
 
+  // その他タスク用の新規タスク追加
+  const handleAddUnparentedTask = () => {
+    if (!activeProjectId) return;
+    const newTaskId = `task-manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    addTask({
+      id: newTaskId,
+      title: '新しいタスク',
+      status: 'todo',
+      projectId: activeProjectId,
+      assignee: '',
+      progress: 0,
+      isNew: false
+    });
+  };
+
+  // Excel出力
   const handleExportExcel = async () => {
     setIsExportingExcel(true);
     setExportMessage('');
@@ -162,37 +203,23 @@ export default function WBS() {
     }
   };
 
+  // 循環参照チェック (parentTaskId が childTaskId の子孫でないことを保証)
+  const isDescendant = (parentTaskId: string, childTaskId: string | undefined): boolean => {
+    if (!childTaskId) return false;
+    let current = tasks.find(t => t.id === childTaskId);
+    while (current) {
+      if (current.parentId === parentTaskId) return true;
+      const nextParentId = current.parentId;
+      current = nextParentId ? tasks.find(t => t.id === nextParentId) : undefined;
+    }
+    return false;
+  };
+
   // 承認済みタスクのみをフィルタリング
   const approvedTasks = useMemo(() => tasks.filter(t => !t.isNew), [tasks]);
 
-  // 循環参照を防止し、かつ同一プロジェクト内の有効な親グループ候補を取得する
-  const getParentGroupOptions = (currentTask: TaskExtractResult) => {
-    const projectTasks = approvedTasks.filter(t => {
-      if (activeProjectId === null) return !t.projectId;
-      return t.projectId === activeProjectId;
-    });
-
-    const descendants = new Set<string>();
-    const findDescendants = (pid: string) => {
-      projectTasks.forEach(t => {
-        if (t.parentId === pid) {
-          descendants.add(t.id);
-          findDescendants(t.id);
-        }
-      });
-    };
-    findDescendants(currentTask.id);
-
-    return projectTasks.filter(t => 
-      !t.parentId && // 親を持たない（最上位タスクグループ候補）
-      t.id !== currentTask.id && // 自分自身ではない
-      !descendants.has(t.id) // 自分の子孫タスクではない
-    );
-  };
-
-  // フィルター条件にマッチするタスクIDセットを構築（祖先も含める）
+  // フィルター条件にマッチするタスク
   const filteredTasks = useMemo(() => {
-    // まずプロジェクトで絞り込み
     const projectFiltered = approvedTasks.filter(t => {
       if (activeProjectId === null) {
         return !t.projectId;
@@ -200,12 +227,10 @@ export default function WBS() {
       return t.projectId === activeProjectId;
     });
 
-    // フィルターが一切ない場合はそのまま返す
     if (!showIncompleteOnly && !filterMemberId) {
       return projectFiltered;
     }
 
-    // フィルター条件に直接マッチするタスクを特定
     const directMatchIds = new Set<string>();
     projectFiltered.forEach(t => {
       let matches = true;
@@ -214,7 +239,7 @@ export default function WBS() {
       if (matches) directMatchIds.add(t.id);
     });
 
-    // マッチしたタスクの祖先チェーンも表示対象に含める
+    // フィルタマッチしたタスクの親・先祖もツリーとして表示させるために抽出
     const taskById = new Map(projectFiltered.map(t => [t.id, t]));
     const visibleIds = new Set(directMatchIds);
     directMatchIds.forEach(id => {
@@ -228,7 +253,7 @@ export default function WBS() {
     return projectFiltered.filter(t => visibleIds.has(t.id));
   }, [approvedTasks, activeProjectId, showIncompleteOnly, filterMemberId]);
 
-  // アクティブなプロジェクトの担当可能なメンバー一覧
+  // 担当メンバー一覧
   const currentProjectMembers = useMemo(() => {
     if (!activeProjectId) return members;
     const activeProj = projects.find(p => p.id === activeProjectId);
@@ -238,28 +263,40 @@ export default function WBS() {
     return members;
   }, [members, projects, activeProjectId]);
 
-  // タスク階層ツリーを構築
-  const wbsTree = useMemo(() => {
+  // 親グループタスク (isGroup: true または子タスクがある最上位タスク) の抽出
+  const groupTasks = useMemo(() => {
+    return filteredTasks.filter(t => {
+      if (t.parentId) return false;
+      // グループと定義されているもの、もしくは昔のデータで子タスクが存在するもの
+      return !!t.isGroup || filteredTasks.some(c => c.parentId === t.id);
+    });
+  }, [filteredTasks]);
+
+  // その他タスク (親グループ以外の最上位タスク)
+  const otherTasks = useMemo(() => {
+    return filteredTasks.filter(t => {
+      if (t.parentId) return false;
+      return !t.isGroup && !filteredTasks.some(c => c.parentId === t.id);
+    });
+  }, [filteredTasks]);
+
+  // タスクの階層ツリー構築用
+  const buildTree = (taskList: TaskExtractResult[]): TaskNode[] => {
     const taskMap = new Map<string, TaskNode>();
-    
-    // 全てノードを初期化
-    filteredTasks.forEach(t => {
+    taskList.forEach(t => {
       taskMap.set(t.id, { task: t, children: [] });
     });
-    
+
     const roots: TaskNode[] = [];
-    
-    filteredTasks.forEach(t => {
+    taskList.forEach(t => {
       const node = taskMap.get(t.id)!;
       if (t.parentId && taskMap.has(t.parentId)) {
-        const parentNode = taskMap.get(t.parentId)!;
-        parentNode.children.push(node);
+        taskMap.get(t.parentId)!.children.push(node);
       } else {
         roots.push(node);
       }
     });
 
-    // ソート処理（wbsOrder優先、未設定時はIDでソート）
     const sortTree = (nodes: TaskNode[]) => {
       nodes.sort((a, b) => {
         const orderA = a.task.wbsOrder ?? 999999;
@@ -272,231 +309,190 @@ export default function WBS() {
 
     sortTree(roots);
     return roots;
-  }, [filteredTasks]);
+  };
 
-  // 子タスクを持つグループ（roots）と、持たない独立したタスク（singles）を分割
-  const { groupRoots, singleRoots } = useMemo(() => {
-    const groups: TaskNode[] = [];
-    const singles: TaskNode[] = [];
-    wbsTree.forEach(node => {
-      if (node.children.length > 0) {
-        groups.push(node);
-      } else {
-        singles.push(node);
+  // ドラッグ＆ドロップ：グループカードの並び替えハンドラー
+  const handleCardDragStart = (e: React.DragEvent, cardId: string) => {
+    e.stopPropagation();
+    setDraggedCardId(cardId);
+    e.dataTransfer.setData('text/card-id', cardId);
+  };
+
+  const handleCardDragOver = (e: React.DragEvent, cardId: string) => {
+    if (e.dataTransfer.types.includes('text/card-id')) {
+      e.preventDefault();
+      setDragOverCardId(cardId);
+    }
+  };
+
+  const handleCardDrop = (e: React.DragEvent, targetCardId: string) => {
+    e.preventDefault();
+    const sourceCardId = e.dataTransfer.getData('text/card-id');
+    if (sourceCardId && sourceCardId !== targetCardId && activeProjectId) {
+      const allCardIds = [
+        ...groupTasks.map(gt => gt.id),
+        'other-tasks'
+      ];
+      
+      // 現在の並び順を取得
+      const currentOrder = cardOrder.length > 0 
+        ? [...cardOrder.filter(id => allCardIds.includes(id)), ...allCardIds.filter(id => !cardOrder.includes(id))]
+        : allCardIds;
+
+      const fromIdx = currentOrder.indexOf(sourceCardId);
+      const toIdx = currentOrder.indexOf(targetCardId);
+
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const newOrder = [...currentOrder];
+        const [removed] = newOrder.splice(fromIdx, 1);
+        newOrder.splice(toIdx, 0, removed);
+        
+        setCardOrder(newOrder);
+        localStorage.setItem(`wbs_card_order_${activeProjectId}`, JSON.stringify(newOrder));
       }
-    });
-    return { groupRoots: groups, singleRoots: singles };
-  }, [wbsTree]);
+    }
+    setDraggedCardId(null);
+    setDragOverCardId(null);
+  };
 
-  // 再帰的なノード描画
+  // ドラッグ＆ドロップ：タスクのドラッグハンドラー
+  const handleTaskDragStart = (e: React.DragEvent, taskId: string) => {
+    e.stopPropagation();
+    setDraggedTaskId(taskId);
+    e.dataTransfer.setData('text/task-id', taskId);
+  };
+
+  const handleTaskDragOver = (e: React.DragEvent, taskId: string) => {
+    if (e.dataTransfer.types.includes('text/task-id') && draggedTaskId !== taskId) {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverTaskId(taskId);
+    }
+  };
+
+  const handleTaskDrop = (e: React.DragEvent, targetTaskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceTaskId = e.dataTransfer.getData('text/task-id');
+    if (sourceTaskId && sourceTaskId !== targetTaskId) {
+      // 循環参照チェック
+      if (sourceTaskId === targetTaskId || isDescendant(sourceTaskId, targetTaskId)) {
+        alert('タスクを自分自身や自分の子タスクの配下へ移動することはできません。');
+        setDragOverTaskId(null);
+        setDraggedTaskId(null);
+        return;
+      }
+
+      // parentId をターゲットタスクIDに更新（入れ子へ移動）
+      updateTask(sourceTaskId, { parentId: targetTaskId });
+    }
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+  };
+
+  // カードボディー（またはヘッダー）へのタスクドロップハンドラー
+  const handleTaskDropOnCard = (e: React.DragEvent, cardId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceTaskId = e.dataTransfer.getData('text/task-id');
+    if (sourceTaskId) {
+      if (cardId === 'other-tasks') {
+        // その他カードにドロップ -> 最上位かつグループフラグオフ
+        updateTask(sourceTaskId, { parentId: undefined, isGroup: false });
+      } else {
+        // 特定グループにドロップ -> その親グループ配下に設定
+        if (sourceTaskId === cardId || isDescendant(sourceTaskId, cardId)) {
+          alert('タスクを自分自身の配下へ移動することはできません。');
+          setDragOverCardId(null);
+          setDraggedTaskId(null);
+          return;
+        }
+        updateTask(sourceTaskId, { parentId: cardId, isGroup: false });
+      }
+    }
+    setDraggedTaskId(null);
+    setDragOverCardId(null);
+    setDragOverTaskId(null);
+  };
+
+  const handleTaskDragOverCard = (e: React.DragEvent, cardId: string) => {
+    if (e.dataTransfer.types.includes('text/task-id')) {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverCardId(cardId);
+    }
+  };
+
+  // ソートされたカード一覧の取得
+  const sortedCards = useMemo(() => {
+    const allCards = [
+      ...groupTasks.map(gt => ({ id: gt.id, type: 'group' as const, task: gt })),
+      { id: 'other-tasks', type: 'other' as const, title: 'その他タスク' }
+    ];
+
+    if (cardOrder.length === 0) return allCards;
+
+    const cardMap = new Map(allCards.map(c => [c.id, c]));
+    const ordered = cardOrder
+      .map(id => cardMap.get(id))
+      .filter((c): c is typeof allCards[number] => !!c);
+
+    const remaining = allCards.filter(c => !cardOrder.includes(c.id));
+    return [...ordered, ...remaining];
+  }, [groupTasks, cardOrder]);
+
+  // 再帰的なタスク項目の描画
   const renderTaskNode = (node: TaskNode, depth: number = 0): React.ReactNode => {
     const { task, children } = node;
     const hasChildren = children.length > 0;
     const isCollapsed = !!collapsedTaskIds[task.id];
 
-    // ステータス別のカラー設定
-    const getStatusStyles = (status: string) => {
-      switch (status) {
-        case 'todo': 
-          return { bg: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.2)', text: '#3b82f6' };
-        case 'in-progress': 
-          return { bg: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.2)', text: '#f59e0b' };
-        case 'done': 
-          return { bg: 'rgba(16, 185, 129, 0.1)', border: 'rgba(16, 185, 129, 0.2)', text: '#10b981' };
-        default: 
-          return { bg: 'rgba(255, 255, 255, 0.05)', border: 'rgba(255, 255, 255, 0.1)', text: 'var(--text-muted)' };
-      }
-    };
-
-    const statusStyle = getStatusStyles(task.status);
-    const isGroupRoot = depth === 0 && hasChildren;
-
     return (
-      <div key={task.id} style={{ display: 'flex', flexDirection: 'column' }}>
-        {/* タスク行の本体 */}
-        <div className={`wbs-task-row ${isGroupRoot ? 'wbs-parent-row' : ''}`}>
-          <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '0.5rem', minWidth: 0 }}>
-            {/* インデントの幅と縦ライン */}
-            {Array.from({ length: depth }).map((_, i) => (
-              <div 
-                key={i} 
-                style={{ 
-                  width: '24px', 
-                  alignSelf: 'stretch', 
-                  display: 'flex', 
-                  justifyContent: 'center',
-                  position: 'relative'
-                }}
-              >
-                <div className="wbs-indent-line" />
-              </div>
-            ))}
-
-            {/* 開閉ボタン */}
-            <button
-              className="wbs-collapse-btn"
-              onClick={() => toggleCollapse(task.id)}
-              style={{
-                visibility: hasChildren ? 'visible' : 'hidden',
-                transform: isCollapsed ? 'rotate(-90deg)' : 'none',
-              }}
-            >
-              <ChevronDown size={16} />
-            </button>
-
-            {/* インラインタイトル入力 */}
-            <input
-              className="wbs-title-input"
-              value={task.title}
-              onChange={e => updateTask(task.id, { title: e.target.value })}
-              placeholder="タスク名を入力してください"
-            />
+      <div key={task.id} className="wbs-card-task-row">
+        <div 
+          className={`wbs-card-task-item ${draggedTaskId === task.id ? 'dragging-task' : ''} ${dragOverTaskId === task.id ? 'drag-over-task' : ''}`}
+          draggable
+          onDragStart={(e) => handleTaskDragStart(e, task.id)}
+          onDragOver={(e) => handleTaskDragOver(e, task.id)}
+          onDragLeave={() => setDragOverTaskId(null)}
+          onDrop={(e) => handleTaskDrop(e, task.id)}
+        >
+          <div className="wbs-task-left">
+            <span className="wbs-task-drag-grip"><GripVertical size={13} /></span>
+            
+            {hasChildren && (
+              <span className="wbs-collapse-arrow" onClick={(e) => { e.stopPropagation(); toggleCollapse(task.id); }}>
+                {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+              </span>
+            )}
+            <span className="wbs-task-title-text" onClick={() => setEditingTaskId(task.id)} title="クリックして詳細編集">
+              {task.title || '無題のタスク'}
+            </span>
           </div>
 
-          {/* 右側：属性編集コントロール */}
-          <div className="wbs-meta-controls">
-            {/* 親グループ */}
-            <div className="wbs-control-item" style={{ width: '150px' }} title="親グループ設定">
-              <FolderTree size={14} style={{ color: 'var(--text-muted)' }} />
-              <select
-                className="wbs-inline-select"
-                value={task.parentId || ''}
-                onChange={e => {
-                  updateTask(task.id, { parentId: e.target.value || undefined });
-                }}
-              >
-                <option value="">-- 最上位タスク --</option>
-                {getParentGroupOptions(task).map(p => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* 担当者 */}
-            <div className="wbs-control-item" title="担当者">
-              <Users size={14} style={{ color: 'var(--text-muted)' }} />
-              <select
-                className="wbs-inline-select"
-                value={task.memberId || ''}
-                onChange={e => {
-                  const mId = e.target.value;
-                  const mem = members.find(m => m.id === mId);
-                  updateTask(task.id, { 
-                    memberId: mId || undefined,
-                    assignee: mem ? mem.name : ''
-                  });
-                }}
-              >
-                <option value="">未割り当て</option>
-                {currentProjectMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* 開始日・期限 (クリックで編集モーダル) */}
-            <div 
-              className="wbs-date-badge"
-              onClick={() => setEditingTaskId(task.id)}
-              title="日程を変更 (詳細編集)"
-            >
-              <Calendar size={13} style={{ color: 'var(--text-muted)' }} />
-              <span style={{ fontSize: '0.8rem' }}>
-                {task.startDate && task.dueDate 
-                  ? `${task.startDate.slice(5)} 〜 ${task.dueDate.slice(5)}`
-                  : task.dueDate 
-                    ? `〆 ${task.dueDate.slice(5)}` 
-                    : task.startDate
-                      ? `${task.startDate.slice(5)}〜`
-                      : '日程未設定'}
-              </span>
-            </div>
-
-            {/* 進捗率 */}
-            <div className="wbs-progress-container">
-              <input
-                className="wbs-progress-input"
-                type="number"
-                min="0"
-                max="100"
-                value={task.progress ?? 0}
-                onChange={e => {
-                  let prog = parseInt(e.target.value) || 0;
-                  prog = Math.max(0, Math.min(100, prog));
-                  const updates: Partial<TaskExtractResult> = { progress: prog };
-                  if (prog === 100) {
-                    updates.status = 'done';
-                  } else if (prog > 0 && task.status === 'todo') {
-                    updates.status = 'in-progress';
-                  } else if (prog === 0 && task.status === 'done') {
-                    updates.status = 'todo';
-                  }
-                  updateTask(task.id, updates);
-                }}
-              />
-              <span className="wbs-percent-symbol">%</span>
-            </div>
-
-            {/* ステータス */}
-            <select
-              className="wbs-status-select"
-              value={task.status}
-              onChange={e => {
-                const newStatus = e.target.value as 'todo' | 'in-progress' | 'done';
-                const updates: Partial<TaskExtractResult> = { status: newStatus };
-                if (newStatus === 'done') {
-                  updates.progress = 100;
-                } else if (newStatus === 'todo' && task.progress === 100) {
-                  updates.progress = 0;
-                }
-                updateTask(task.id, updates);
-              }}
-              style={{
-                backgroundColor: statusStyle.bg,
-                borderColor: statusStyle.border,
-                color: statusStyle.text,
-              }}
-            >
-              <option value="todo" style={{ color: '#3b82f6' }}>To Do</option>
-              <option value="in-progress" style={{ color: '#f59e0b' }}>In Progress</option>
-              <option value="done" style={{ color: '#10b981' }}>Done</option>
-            </select>
-
-            {/* アクションボタン群 */}
-            <div className="wbs-action-group">
-              <button
-                className="wbs-row-action-btn"
-                onClick={() => handleAddChild(task)}
-                title="子タスクを追加"
-              >
-                <Plus size={15} />
-              </button>
-              <button
-                className="wbs-row-action-btn"
-                onClick={() => setEditingTaskId(task.id)}
-                title="詳細を編集"
-              >
-                <Edit2 size={14} />
-              </button>
-              <button
-                className="wbs-row-action-btn"
-                onClick={() => {
-                  if (window.confirm(`「${task.title}」を削除してもよろしいですか？\n（子タスクは親から切り離されます）`)) {
-                    deleteTask(task.id);
-                  }
-                }}
-                style={{ color: '#ef4444' }}
-                title="タスクを削除"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
+          <div className="wbs-task-right">
+            <span className={`wbs-status-badge ${task.status}`}>
+              {task.status === 'todo' ? 'To Do' : task.status === 'in-progress' ? 'In Progress' : 'Done'}
+            </span>
+            
+            <button className="wbs-row-action-btn" onClick={(e) => { e.stopPropagation(); handleAddChild(task); }} title="子タスクを追加">
+              <Plus size={14} />
+            </button>
+            
+            <button className="wbs-row-action-btn" onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(`「${task.title}」を削除してもよろしいですか？\n（子タスクは親から切り離されます）`)) {
+                deleteTask(task.id);
+              }
+            }} style={{ color: '#ef4444' }} title="タスクを削除">
+              <Trash2 size={13} />
+            </button>
           </div>
         </div>
 
-        {/* 子タスクの再帰表示 */}
+        {/* 子タスクをインデントして再帰表示 */}
         {hasChildren && !isCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="wbs-nested-container">
             {children.map(child => renderTaskNode(child, depth + 1))}
           </div>
         )}
@@ -515,7 +511,7 @@ export default function WBS() {
           <div>
             <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>タスク階層ビュー (WBS)</h2>
             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              プロジェクトを構成する親グループ・子タスクの関係をツリー階層で可視化し、自在に編集・追加します。
+              3列のカードでグループ管理。タスクをドラッグ＆ドロップして階層化や移動を自在に行えます。
             </p>
           </div>
         </div>
@@ -529,7 +525,7 @@ export default function WBS() {
             <Download size={18} />
             <span>{isExportingExcel ? '出力中...' : '表示中プロジェクトをExcel出力'}</span>
           </button>
-          <button className="btn-primary" onClick={handleAddGroup}>
+          <button className="btn-primary" onClick={handleAddGroup} disabled={!activeProjectId}>
             <Plus size={18} />
             <span>グループ（親タスク）を追加</span>
           </button>
@@ -661,69 +657,125 @@ export default function WBS() {
         )}
       </div>
 
-      {/* ツリーコンテンツ */}
-      <div className="glass-panel wbs-tree-panel">
-        {wbsTree.length === 0 ? (
+      {/* 3列カードレイアウト */}
+      {activeProjectId === null ? (
+        <div className="glass-panel wbs-tree-panel">
           <div className="wbs-empty-state">
             <FolderTree size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem', opacity: 0.6 }} />
-            <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>表示するタスクがありません</h4>
+            <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-secondary)' }}>未分類のタスク</h4>
             <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              右上のボタンから、このプロジェクトに新しいグループ（親タスク）を追加して整理を始めましょう。
+              未分類タブではタスクをフラットに表示します。プロジェクトに属するタスクは、各プロジェクトのWBSカード画面でドラッグ階層化が可能です。
             </p>
-            <button 
-              className="btn-secondary" 
-              onClick={handleAddGroup} 
-              style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <Plus size={16} />
-              <span>グループを追加</span>
-            </button>
           </div>
-        ) : (
-          <div className="wbs-tree-list">
-            {/* WBSテーブルヘッダーのシミュレーション */}
-            <div className="wbs-table-header">
-              <span style={{ flex: 1, paddingLeft: '32px' }}>タスク構造 / タイトル</span>
-              <div className="wbs-table-header-meta">
-                <span style={{ width: '150px', textAlign: 'left' }}>親グループ</span>
-                <span style={{ width: '130px', textAlign: 'left' }}>担当者</span>
-                <span style={{ width: '130px', textAlign: 'center' }}>日程</span>
-                <span style={{ width: '70px', textAlign: 'center' }}>進捗</span>
-                <span style={{ width: '120px', textAlign: 'center' }}>ステータス</span>
-                <span style={{ width: '100px', textAlign: 'center' }}>操作</span>
-              </div>
-            </div>
-            {/* WBSツリー本体 */}
-            <div className="wbs-tree-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {/* 子タスクを持つグループのカード表示 */}
-              {groupRoots.map(node => (
-                <div key={node.task.id} className="wbs-group-card">
-                  {renderTaskNode(node, 0)}
-                </div>
-              ))}
+        </div>
+      ) : (
+        <div className="wbs-grid">
+          {sortedCards.map(card => {
+            const isDragOver = dragOverCardId === card.id;
+            const isDragging = draggedCardId === card.id;
 
-              {/* 親がなく、子もない独立したタスクを「その他」として一括カード表示 */}
-              {singleRoots.length > 0 && (
-                <div className="wbs-group-card wbs-other-group-card">
-                  <div className="wbs-other-group-header">
-                    <span className="wbs-other-group-title">その他タスク（グループ未分類）</span>
+            if (card.type === 'group') {
+              const groupTask = card.task!;
+              const groupChildren = filteredTasks.filter(t => t.parentId === groupTask.id);
+              const treeNodes = buildTree(groupChildren);
+
+              return (
+                <div 
+                  key={card.id}
+                  className={`wbs-group-card ${isDragging ? 'dragging-card' : ''} ${isDragOver ? 'drag-over-card' : ''}`}
+                  onDragOver={(e) => handleTaskDragOverCard(e, card.id)}
+                  onDragLeave={() => setDragOverCardId(null)}
+                  onDrop={(e) => handleTaskDropOnCard(e, card.id)}
+                >
+                  {/* カードヘッダー */}
+                  <div 
+                    className="wbs-group-card-header"
+                    draggable
+                    onDragStart={(e) => handleCardDragStart(e, card.id)}
+                    onDragOver={(e) => handleCardDragOver(e, card.id)}
+                    onDrop={(e) => handleCardDrop(e, card.id)}
+                  >
+                    <input 
+                      className="wbs-group-card-title-input"
+                      value={groupTask.title}
+                      onChange={e => updateTask(groupTask.id, { title: e.target.value })}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="wbs-group-card-actions">
+                      <button className="wbs-card-action-btn" onClick={() => handleAddChild(groupTask)} title="このグループにタスクを追加">
+                        <Plus size={16} />
+                      </button>
+                      <button className="wbs-card-action-btn delete" onClick={() => {
+                        if (window.confirm(`グループ「${groupTask.title}」を削除してもよろしいですか？\n(配下のタスクは親から切り離されます)`)) {
+                          deleteTask(groupTask.id);
+                        }
+                      }} title="グループを削除">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    {singleRoots.map(node => renderTaskNode(node, 0))}
+
+                  {/* カードボディ */}
+                  <div className="wbs-group-card-body">
+                    {treeNodes.length === 0 ? (
+                      <div className="wbs-empty-card-state">
+                        タスクがありません。<br/>右上の「+」ボタンから追加するか、他のタスクをここにドラッグしてください。
+                      </div>
+                    ) : (
+                      treeNodes.map(node => renderTaskNode(node))
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+              );
+            } else {
+              // その他タスクカード
+              const otherChildren = otherTasks;
+              const treeNodes = buildTree(otherChildren);
+
+              return (
+                <div 
+                  key={card.id}
+                  className={`wbs-group-card wbs-other-card ${isDragging ? 'dragging-card' : ''} ${isDragOver ? 'drag-over-card' : ''}`}
+                  onDragOver={(e) => handleTaskDragOverCard(e, card.id)}
+                  onDragLeave={() => setDragOverCardId(null)}
+                  onDrop={(e) => handleTaskDropOnCard(e, card.id)}
+                >
+                  {/* カードヘッダー */}
+                  <div 
+                    className="wbs-group-card-header"
+                    draggable
+                    onDragStart={(e) => handleCardDragStart(e, card.id)}
+                    onDragOver={(e) => handleCardDragOver(e, card.id)}
+                    onDrop={(e) => handleCardDrop(e, card.id)}
+                  >
+                    <span className="wbs-other-card-title">{card.title}</span>
+                    <div className="wbs-group-card-actions">
+                      <button className="wbs-card-action-btn" onClick={handleAddUnparentedTask} title="タスクを新規追加">
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* カードボディ */}
+                  <div className="wbs-group-card-body">
+                    {treeNodes.length === 0 ? (
+                      <div className="wbs-empty-card-state">
+                        グループ未所属のタスクはありません。<br/>右上の「+」ボタンから追加するか、他のタスクをここにドラッグしてください。
+                      </div>
+                    ) : (
+                      treeNodes.map(node => renderTaskNode(node))
+                    )}
+                  </div>
+                </div>
+              );
+            }
+          })}
+        </div>
+      )}
 
       {/* 詳細編集モーダル */}
       {editingTaskId && (
-        <TaskEditModal
-          taskId={editingTaskId}
-          onClose={() => setEditingTaskId(null)}
-        />
+        <TaskEditModal taskId={editingTaskId} onClose={() => setEditingTaskId(null)} />
       )}
     </div>
   );

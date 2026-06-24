@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 import { buildSummaryPrompt } from './src/prompts/summaryPrompts'
-import { buildTaskExtractionPrompt } from './src/prompts/taskPrompts'
+import { buildTaskExtractionPrompt, buildProjectMatchingPrompt, buildSmartTaskExtractionPrompt } from './src/prompts/taskPrompts'
 import * as http from 'node:http';
 import * as https from 'node:https';
 
@@ -97,6 +97,7 @@ const state = {
   sseClients: new Set(),
   processedCount: 0,
   totalCount: 0,
+  pendingFileContexts: new Map(), // minuteId -> { file, title, content, llmEndpoint, streamOption }
 };
 
 function genId(prefix) {
@@ -500,22 +501,65 @@ function scanScreenshots(imageDir, meetingDate, startTimeStr, endTimeStr) {
   return matched;
 }
 
+// ====== データファイル読み込みヘルパー ======
+function loadDataFile(filename) {
+  const filePath = path.join(process.cwd(), 'data', filename);
+  if (fs.existsSync(filePath)) {
+    try { return JSON.parse(fs.readFileSync(filePath, 'utf-8')); } catch (e) { return []; }
+  }
+  return [];
+}
+
+// ====== スマートタスク結果のマージ処理 ======
+function processSmartTaskResults(parsed, projectId, minute) {
+  const newTasks = [];
+  const updatedTasks = [];
+
+  for (const item of parsed) {
+    if (item.type === 'update' && item.id) {
+      // 既存タスクの更新提案 → pendingUpdates として SSE 通知
+      const pendingUpdates = {};
+      if (item.details) pendingUpdates.details = item.details;
+      if (item.actionResult) pendingUpdates.actionResult = item.actionResult;
+      if (item.status) pendingUpdates.status = item.status;
+      if (item.progress !== undefined) pendingUpdates.progress = item.progress;
+
+      broadcast('task_updated', { id: item.id, pendingUpdates });
+      updatedTasks.push({ id: item.id, pendingUpdates });
+    } else if (item.type === 'new') {
+      const task = {
+        id: genId('task'),
+        title: item.title,
+        details: item.details || '',
+        assignee: item.assignee || '',
+        status: item.status || 'todo',
+        progress: item.progress || 0,
+        projectId: projectId || undefined,
+        parentId: item.parentId || undefined,
+        isNew: true,
+      };
+      newTasks.push(task);
+      state.createdTasks.push(task);
+      broadcast('task_created', task);
+    }
+  }
+
+  // 議事録の extractedTasks を新規タスクのみで更新
+  if (minute) {
+    minute.extractedTasks = newTasks;
+  }
+
+  return { newTasks, updatedTasks };
+}
+
 // ====== ファイル処理 ======
 async function processFile(file, llmEndpoint, streamOption = true) {
   state.currentFile = file.filename;
   broadcast('batch_status', { status: 'processing', currentFile: file.filename, processedCount: state.processedCount, totalCount: state.totalCount });
 
+  // ====== Step 1: 要約生成 ======
   const sumResult = await callLlm(llmEndpoint, [{ role: 'user', content: buildSummaryPrompt(file.content) }], `要約: ${file.filename}`, 0.6, streamOption);
-  const taskResult = await callLlm(llmEndpoint, [
-    { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
-    { role: 'user', content: buildTaskExtractionPrompt(file.content) }
-  ], `タスク抽出: ${file.filename}`, 0.6, streamOption);
 
-  let parsed = [];
-  try { parsed = JSON.parse(taskResult.output.replace(/```json\n?|```/g, '').trim()); } catch (e) { }
-
-  const tasks = parsed.map(t => ({ ...t, id: genId('task'), status: 'todo', isNew: true }));
-  
   let extractedDate = new Date().toISOString().split('T')[0];
   let title = file.filename.replace('.txt', '').replace('.vtt', '');
   
@@ -540,7 +584,6 @@ async function processFile(file, llmEndpoint, streamOption = true) {
 
   // ====== スクリーンショット自動連携 ======
   let screenshotImages = [];
-  
   try {
     const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
     let imageDir = '';
@@ -548,10 +591,8 @@ async function processFile(file, llmEndpoint, streamOption = true) {
       const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
       imageDir = settings.imageDir || '';
     }
-    
     if (imageDir && meetingStartTime) {
       const matchedScreenshots = scanScreenshots(imageDir, extractedDate, meetingStartTime, meetingEndTime);
-      
       if (matchedScreenshots.length > 0) {
         screenshotImages = matchedScreenshots.map(ss => `/api/image/view?path=${encodeURIComponent(ss.path)}`);
         debugLog(`[processFile] ${matchedScreenshots.length} screenshots attached to minute`);
@@ -561,32 +602,110 @@ async function processFile(file, llmEndpoint, streamOption = true) {
     debugLog(`[processFile] Screenshot scan error: ${e.message}`);
   }
 
+  // ====== Step 2: プロジェクト自動判定 ======
+  const dbProjects = loadDataFile('projects.json');
+  const dbMembers = loadDataFile('members.json');
+  const dbTasks = loadDataFile('tasks.json');
+  const activeProjects = dbProjects.filter(p => !p.isClosed);
+
+  let matchedProjectId = null;
+
+  if (activeProjects.length > 0) {
+    try {
+      const matchPrompt = buildProjectMatchingPrompt(title, file.content, activeProjects, dbMembers);
+      const matchResult = await callLlm(llmEndpoint, [
+        { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
+        { role: 'user', content: matchPrompt }
+      ], `プロジェクト判定: ${file.filename}`, 0.3, streamOption);
+
+      try {
+        const matchParsed = JSON.parse(matchResult.output.replace(/```json\n?|```/g, '').trim());
+        if (matchParsed.projectId && matchParsed.projectId !== 'unknown') {
+          matchedProjectId = matchParsed.projectId;
+          debugLog(`[processFile] Project matched: ${matchedProjectId}`);
+        }
+      } catch (e) {
+        debugLog(`[processFile] Failed to parse project match result: ${e.message}`);
+      }
+    } catch (e) {
+      debugLog(`[processFile] Project matching LLM call failed: ${e.message}`);
+    }
+  }
+
+  // ====== 議事録オブジェクト生成（タスクは後で追加） ======
+  const minuteId = genId('min');
   const minute = {
-    id: genId('min'),
+    id: minuteId,
     date: extractedDate,
     title: title,
     summary: sumResult.output,
     content: file.content,
-    extractedTasks: tasks,
+    extractedTasks: [],
+    projectId: matchedProjectId || undefined,
     startTime: meetingStartTime || undefined,
     endTime: meetingEndTime || undefined,
     images: screenshotImages.length > 0 ? screenshotImages : undefined,
   };
-  state.createdTasks.push(...tasks);
   state.createdMinutes.push(minute);
-  for (const t of tasks) broadcast('task_created', t);
   broadcast('minute_created', minute);
+
+  // ====== Step 3: スマートタスク抽出 or フォールバック ======
+  if (matchedProjectId) {
+    // プロジェクト特定済み → スマートタスク抽出
+    const activeTasks = dbTasks.filter(t =>
+      t.projectId === matchedProjectId &&
+      !t.isNew &&
+      (t.status === 'todo' || t.status === 'in-progress')
+    );
+    const groupTasks = dbTasks.filter(t =>
+      t.projectId === matchedProjectId &&
+      !t.isNew &&
+      (t.isGroup || dbTasks.some(c => c.parentId === t.id))
+    );
+    const projectMembers = dbMembers;
+
+    try {
+      const smartPrompt = buildSmartTaskExtractionPrompt(file.content, activeTasks, groupTasks, projectMembers);
+      const smartResult = await callLlm(llmEndpoint, [
+        { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
+        { role: 'user', content: smartPrompt }
+      ], `スマートタスク抽出: ${file.filename}`, 0.6, streamOption);
+
+      let parsed = [];
+      try { parsed = JSON.parse(smartResult.output.replace(/```json\n?|```/g, '').trim()); } catch (e) { }
+
+      processSmartTaskResults(parsed, matchedProjectId, minute);
+    } catch (e) {
+      debugLog(`[processFile] Smart task extraction failed, falling back to basic: ${e.message}`);
+      // フォールバック: 従来のタスク抽出
+      await fallbackBasicTaskExtraction(file, llmEndpoint, streamOption, matchedProjectId, minute);
+    }
+  } else if (activeProjects.length > 0) {
+    // プロジェクト判定不可 → 一時保留してフロントエンドに通知
+    state.pendingFileContexts.set(minuteId, {
+      file, title, content: file.content, llmEndpoint, streamOption, minuteId
+    });
+    broadcast('project_association_needed', {
+      minuteId: minuteId,
+      title: title,
+      filename: file.filename,
+      content: file.content.slice(0, 2000),
+    });
+    debugLog(`[processFile] Project unknown → sent project_association_needed for ${minuteId}`);
+
+    // 従来のタスク抽出も並行実施（プロジェクト未紐付けの状態で）
+    await fallbackBasicTaskExtraction(file, llmEndpoint, streamOption, null, minute);
+  } else {
+    // プロジェクトが1つもない → 従来のタスク抽出
+    await fallbackBasicTaskExtraction(file, llmEndpoint, streamOption, null, minute);
+  }
 
   // ====== メンバ自動抽出 ======
   const extractedNames = new Set();
-  
   if (file.isVtt && file.rawContent) {
     const vttNames = extractMembersFromVtt(file.rawContent);
-    for (const name of vttNames) {
-      extractedNames.add(name);
-    }
+    for (const name of vttNames) extractedNames.add(name);
   }
-  
   const regex1 = /\[([^\]\n]{1,50})\]\s*\d{2}:\d{2}/g;
   const regex2 = /(?:^|\n)(?:\[?\d{2}:\d{2}(?::\d{2})?\]?\s*)?([^\[\]:：\n]{1,50})[=:：]/g;
   [regex1, regex2].forEach(regex => {
@@ -601,25 +720,17 @@ async function processFile(file, llmEndpoint, streamOption = true) {
   });
 
   if (extractedNames.size > 0) {
-    const dbDir = path.join(process.cwd(), 'data');
-    const membersPath = path.join(dbDir, 'members.json');
-    let members = [];
-    if (fs.existsSync(membersPath)) {
-      try { members = JSON.parse(fs.readFileSync(membersPath, 'utf-8')); } catch (e) {}
-    }
-    
+    const membersOnDisk = loadDataFile('members.json');
     const newMembers = [];
     for (const name of extractedNames) {
-      if (!members.find(m => m.name === name)) {
-        newMembers.push(name);
-      }
+      if (!membersOnDisk.find(m => m.name === name)) newMembers.push(name);
     }
-    
     if (newMembers.length > 0) {
       broadcast('new_members_extracted', { names: newMembers, minuteTitle: title });
     }
   }
 
+  // ====== ファイルリネーム（処理済み） ======
   try {
     if (file.isFolder) {
       fs.renameSync(file.fullPath, file.fullPath + '_処理済み');
@@ -632,6 +743,29 @@ async function processFile(file, llmEndpoint, streamOption = true) {
   } catch (e) { }
 
   state.processedCount++;
+}
+
+// ====== 従来型タスク抽出（フォールバック） ======
+async function fallbackBasicTaskExtraction(file, llmEndpoint, streamOption, projectId, minute) {
+  const taskResult = await callLlm(llmEndpoint, [
+    { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
+    { role: 'user', content: buildTaskExtractionPrompt(file.content) }
+  ], `タスク抽出: ${file.filename}`, 0.6, streamOption);
+
+  let parsed = [];
+  try { parsed = JSON.parse(taskResult.output.replace(/```json\n?|```/g, '').trim()); } catch (e) { }
+
+  const tasks = parsed.map(t => ({
+    ...t,
+    id: genId('task'),
+    status: 'todo',
+    isNew: true,
+    projectId: projectId || undefined,
+  }));
+
+  minute.extractedTasks = tasks;
+  state.createdTasks.push(...tasks);
+  for (const t of tasks) broadcast('task_created', t);
 }
 
 async function processBatch(dir, llmEndpoint, streamOption = true) {
@@ -1741,6 +1875,83 @@ ${minutesText}`;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true }));
           } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: e.message })); }
+          return;
+        }
+
+        // ====== スマートタスク抽出API（プロジェクト選択後の再開用） ======
+        if (req.url === '/api/batch/extract-tasks' && req.method === 'POST') {
+          try {
+            const body = await parseBody(req);
+            const { minuteId, projectId, llmEndpoint: reqLlmEndpoint } = body;
+
+            if (!minuteId || !projectId) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'minuteId and projectId are required' }));
+              return;
+            }
+
+            // 保留中コンテキストがある場合はそれを使用、なければデータから再構築
+            let fileContent = '';
+            let endpoint = reqLlmEndpoint || 'http://localhost:8080/v1';
+            let streamOpt = true;
+
+            const pendingCtx = state.pendingFileContexts.get(minuteId);
+            if (pendingCtx) {
+              fileContent = pendingCtx.content;
+              endpoint = pendingCtx.llmEndpoint || endpoint;
+              streamOpt = pendingCtx.streamOption !== undefined ? pendingCtx.streamOption : true;
+              state.pendingFileContexts.delete(minuteId);
+            } else {
+              // ディスクから議事録を読み込み
+              const minutesOnDisk = loadDataFile('minutes.json');
+              const minuteRecord = minutesOnDisk.find(m => m.id === minuteId);
+              if (minuteRecord) {
+                fileContent = minuteRecord.content || '';
+              }
+            }
+
+            if (!fileContent) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Minute content not found' }));
+              return;
+            }
+
+            // スマートタスク抽出を実行
+            const dbTasks = loadDataFile('tasks.json');
+            const dbMembers = loadDataFile('members.json');
+
+            const activeTasks = dbTasks.filter(t =>
+              t.projectId === projectId &&
+              !t.isNew &&
+              (t.status === 'todo' || t.status === 'in-progress')
+            );
+            const groupTasks = dbTasks.filter(t =>
+              t.projectId === projectId &&
+              !t.isNew &&
+              (t.isGroup || dbTasks.some(c => c.parentId === t.id))
+            );
+
+            const smartPrompt = buildSmartTaskExtractionPrompt(fileContent, activeTasks, groupTasks, dbMembers);
+            const smartResult = await callLlm(endpoint, [
+              { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
+              { role: 'user', content: smartPrompt }
+            ], `スマートタスク抽出（手動選択後）`, 0.6, streamOpt);
+
+            let parsed = [];
+            try { parsed = JSON.parse(smartResult.output.replace(/```json\n?|```/g, '').trim()); } catch (e) { }
+
+            const result = processSmartTaskResults(parsed, projectId, null);
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+              success: true,
+              newTasksCount: result.newTasks.length,
+              updatedTasksCount: result.updatedTasks.length,
+            }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
           return;
         }
 
