@@ -159,7 +159,15 @@ export default function Scheduler() {
     return Math.round((date2.getTime() - date1.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = (() => {
+    const d = new Date();
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const jstDate = new Date(utc + (3600000 * 9));
+    const year = jstDate.getFullYear();
+    const month = String(jstDate.getMonth() + 1).padStart(2, '0');
+    const day = String(jstDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  })();
 
   // 全タスクの中で最小の開始日と最大の終了日を見つける
   const { minDate, maxDate } = useMemo(() => {

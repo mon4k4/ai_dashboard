@@ -218,14 +218,20 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
             
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <label style={styles.label}>進捗率 (%)</label>
-              <input 
-                type="number"
-                min="0"
-                max="100"
-                value={task.progress || (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)} 
-                onChange={e => updateTask(task.id, { progress: parseInt(e.target.value) || 0 })}
-                style={styles.input}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
+                <input 
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={task.progress ?? (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)} 
+                  onChange={e => updateTask(task.id, { progress: parseInt(e.target.value) || 0 })}
+                  style={{ flex: 1, accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: '45px', textAlign: 'right', color: 'var(--text-primary)' }}>
+                  {task.progress ?? (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)}%
+                </span>
+              </div>
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Users, Plus, Trash2, Wand2, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
+import './Members.css';
 
 export default function Members() {
   const { members, addMember, updateMember, deleteMember, reorderMembers, pendingMembers, clearPendingMembers } = useAppContext();
@@ -15,7 +16,21 @@ export default function Members() {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [draggableRowId, setDraggableRowId] = useState<string | null>(null);
 
+  // Group Card Drag & Drop States
+  const [groupOrder, setGroupOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('members_group_order');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [draggedGroupCard, setDraggedGroupCard] = useState<string | null>(null);
+  const [dragOverGroupCard, setDragOverGroupCard] = useState<string | null>(null);
+
+  // Row drag and drop
   const handleDragStart = (e: React.DragEvent, idx: number, group: string) => {
+    e.stopPropagation(); // Prevent card dragging
     setDraggedIdx(idx);
     setDraggedGroup(group);
     e.dataTransfer.effectAllowed = 'move';
@@ -23,16 +38,52 @@ export default function Members() {
 
   const handleDragOver = (e: React.DragEvent, idx: number, group: string) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent card dragover
     if (draggedGroup !== group || draggedIdx === null) return;
     setDragOverIdx(idx);
   };
 
   const handleDrop = (e: React.DragEvent, targetIdx: number, group: string) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent card drop
     if (draggedGroup === group && draggedIdx !== null && draggedIdx !== targetIdx) {
       reorderMembers(group, draggedIdx, targetIdx);
     }
     handleDragEnd();
+  };
+
+  // Group Card Drag & Drop handlers
+  const handleGroupCardDragStart = (e: React.DragEvent, groupName: string) => {
+    setDraggedGroupCard(groupName);
+    e.dataTransfer.setData('text/group-card', groupName);
+  };
+
+  const handleGroupCardDragOver = (e: React.DragEvent, groupName: string) => {
+    if (e.dataTransfer.types.includes('text/group-card')) {
+      e.preventDefault();
+      setDragOverGroupCard(groupName);
+    }
+  };
+
+  const handleGroupCardDrop = (e: React.DragEvent, targetGroup: string) => {
+    e.preventDefault();
+    const sourceGroup = e.dataTransfer.getData('text/group-card');
+    if (sourceGroup && sourceGroup !== targetGroup) {
+      const currentOrder = groupOrder.length > 0
+        ? [...groupOrder.filter(g => groupNames.includes(g)), ...groupNames.filter(g => !groupOrder.includes(g))]
+        : [...groupNames];
+      const fromIdx = currentOrder.indexOf(sourceGroup);
+      const toIdx = currentOrder.indexOf(targetGroup);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const newOrder = [...currentOrder];
+        const [removed] = newOrder.splice(fromIdx, 1);
+        newOrder.splice(toIdx, 0, removed);
+        setGroupOrder(newOrder);
+        localStorage.setItem('members_group_order', JSON.stringify(newOrder));
+      }
+    }
+    setDraggedGroupCard(null);
+    setDragOverGroupCard(null);
   };
 
   const handleDragEnd = () => {
@@ -122,7 +173,13 @@ export default function Members() {
     return groups;
   }, [members]);
 
-  const groupNames = Object.keys(groupedMembers);
+  const groupNames = useMemo(() => {
+    const allNames = Object.keys(groupedMembers);
+    if (groupOrder.length === 0) return allNames;
+    const ordered = groupOrder.filter(g => allNames.includes(g));
+    const remaining = allNames.filter(g => !groupOrder.includes(g));
+    return [...ordered, ...remaining];
+  }, [groupedMembers, groupOrder]);
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups(prev => ({ ...prev, [group]: !prev[group] }));
@@ -227,132 +284,143 @@ export default function Members() {
         </button>
       </div>
 
-      <div className="glass-panel" style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {groupNames.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+          <div className="glass-panel" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
             メンバーが登録されていません。
           </div>
         ) : (
-          groupNames.map(groupName => {
-            const groupList = groupedMembers[groupName];
-            const isCollapsed = collapsedGroups[groupName];
-            const internalCount = groupList.filter(m => m.isInternal).length;
-            return (
-              <div key={groupName} style={{ marginBottom: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                {/* Group Header */}
-                <div 
-                  onClick={() => toggleGroup(groupName)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.75rem 1rem',
-                    background: 'rgba(255,255,255,0.03)',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    borderBottom: isCollapsed ? 'none' : '1px solid var(--border-color)'
-                  }}
-                >
-                  {isCollapsed ? <ChevronRight size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
-                  <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{groupName}</span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                    ({groupList.length}名{internalCount > 0 ? ` / 内部${internalCount}名` : ''})
-                  </span>
-                </div>
+          <div className="members-grid">
+            {groupNames.map(groupName => {
+              const groupList = groupedMembers[groupName];
+              const isCollapsed = collapsedGroups[groupName];
+              const internalCount = groupList.filter(m => m.isInternal).length;
+              
+              const isCardDragging = draggedGroupCard === groupName;
+              const isCardDragOver = dragOverGroupCard === groupName;
 
-                {!isCollapsed && (
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th style={{ ...styles.th, width: '6%', textAlign: 'center' }}></th>
-                        <th style={{ ...styles.th, width: '29%' }}>名前</th>
-                        <th style={{ ...styles.th, width: '15%' }}>役職</th>
-                        <th style={{ ...styles.th, width: '10%', textAlign: 'center' }}>内部</th>
-                        <th style={{ ...styles.th, width: '25%' }}>グループ</th>
-                        <th style={{ ...styles.th, width: '15%', textAlign: 'center' }}>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {groupList.map((member, idx) => {
-                        const isDragging = draggedGroup === groupName && draggedIdx === idx;
-                        const isDragOver = draggedGroup === groupName && dragOverIdx === idx && draggedIdx !== idx;
-                        return (
-                          <tr 
-                            key={member.id} 
-                            style={{ 
-                              ...styles.tr,
-                              opacity: isDragging ? 0.4 : 1,
-                              borderTop: isDragOver && dragOverIdx < (draggedIdx ?? 0) ? '2px solid var(--accent-primary)' : undefined,
-                              borderBottom: isDragOver && dragOverIdx > (draggedIdx ?? 0) ? '2px solid var(--accent-primary)' : undefined,
-                              background: isDragging ? 'rgba(255,255,255,0.02)' : undefined,
-                              transition: 'all 0.1s ease',
-                            }}
-                            draggable={draggableRowId === member.id}
-                            onDragStart={(e) => handleDragStart(e, idx, groupName)}
-                            onDragOver={(e) => handleDragOver(e, idx, groupName)}
-                            onDrop={(e) => handleDrop(e, idx, groupName)}
-                            onDragEnd={handleDragEnd}
-                          >
-                            <td style={{ ...styles.td, textAlign: 'center' }}>
-                              <div
-                                onMouseDown={() => setDraggableRowId(member.id)}
-                                onMouseUp={() => setDraggableRowId(null)}
-                                style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', cursor: 'grab', padding: '0.2rem' }}
-                                title="ドラッグして並び替え"
-                              >
-                                <GripVertical size={16} />
-                              </div>
-                            </td>
-                            <td style={styles.td}>
-                              <input 
-                                value={member.name}
-                                onChange={e => updateMember(member.id, { name: e.target.value })}
-                                style={styles.ghostInput}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input 
-                                value={member.title || ''}
-                                onChange={e => updateMember(member.id, { title: e.target.value || undefined })}
-                                style={{ ...styles.ghostInput, textAlign: 'center' }}
-                                placeholder="—"
-                              />
-                            </td>
-                            <td style={{ ...styles.td, textAlign: 'center' }}>
-                              <input 
-                                type="checkbox"
-                                checked={member.isInternal ?? false}
-                                onChange={e => updateMember(member.id, { isInternal: e.target.checked })}
-                                style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-                              />
-                            </td>
-                            <td style={styles.td}>
-                              <input 
-                                value={member.group}
-                                onChange={e => updateMember(member.id, { group: e.target.value })}
-                                style={styles.ghostInput}
-                              />
-                            </td>
-                            <td style={{ ...styles.td, textAlign: 'center' }}>
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '0.25rem' }}>
-                                <button 
-                                  onClick={() => deleteMember(member.id)}
-                                  style={{ ...styles.iconBtn, color: '#ef4444' }}
-                                  title="削除"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </td>
+              return (
+                <div 
+                  key={groupName} 
+                  className={`members-group-card ${isCardDragging ? 'dragging' : ''} ${isCardDragOver ? 'drag-over' : ''}`}
+                  onDragOver={(e) => handleGroupCardDragOver(e, groupName)}
+                  onDragLeave={() => setDragOverGroupCard(null)}
+                  onDrop={(e) => handleGroupCardDrop(e, groupName)}
+                >
+                  {/* Group Header */}
+                  <div 
+                    className="members-group-header"
+                    draggable
+                    onDragStart={(e) => handleGroupCardDragStart(e, groupName)}
+                  >
+                    <div className="members-group-header-left" onClick={() => toggleGroup(groupName)} style={{ cursor: 'pointer' }}>
+                      {isCollapsed ? <ChevronRight size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
+                      <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{groupName}</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
+                        ({groupList.length}名{internalCount > 0 ? ` / 内部${internalCount}名` : ''})
+                      </span>
+                    </div>
+                    <div className="members-group-drag-grip" title="ドラッグしてグループを並び替え">
+                      <GripVertical size={16} />
+                    </div>
+                  </div>
+
+                  {!isCollapsed && (
+                    <div className="members-group-body">
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...styles.th, width: '8%', textAlign: 'center' }}></th>
+                            <th style={{ ...styles.th, width: '32%' }}>名前</th>
+                            <th style={{ ...styles.th, width: '15%', textAlign: 'center' }}>役職</th>
+                            <th style={{ ...styles.th, width: '10%', textAlign: 'center' }}>内部</th>
+                            <th style={{ ...styles.th, width: '25%' }}>グループ</th>
+                            <th style={{ ...styles.th, width: '10%', textAlign: 'center' }}>操作</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            );
-          })
+                        </thead>
+                        <tbody>
+                          {groupList.map((member, idx) => {
+                            const isDragging = draggedGroup === groupName && draggedIdx === idx;
+                            const isDragOver = draggedGroup === groupName && dragOverIdx === idx && draggedIdx !== idx;
+                            return (
+                              <tr 
+                                key={member.id} 
+                                style={{ 
+                                  ...styles.tr,
+                                  opacity: isDragging ? 0.4 : 1,
+                                  borderTop: isDragOver && dragOverIdx < (draggedIdx ?? 0) ? '2px solid var(--accent-primary)' : undefined,
+                                  borderBottom: isDragOver && dragOverIdx > (draggedIdx ?? 0) ? '2px solid var(--accent-primary)' : undefined,
+                                  background: isDragging ? 'rgba(255,255,255,0.02)' : undefined,
+                                  transition: 'all 0.1s ease',
+                                }}
+                                draggable={draggableRowId === member.id}
+                                onDragStart={(e) => handleDragStart(e, idx, groupName)}
+                                onDragOver={(e) => handleDragOver(e, idx, groupName)}
+                                onDrop={(e) => handleDrop(e, idx, groupName)}
+                                onDragEnd={handleDragEnd}
+                              >
+                                <td style={{ ...styles.td, textAlign: 'center' }}>
+                                  <div
+                                    onMouseDown={() => setDraggableRowId(member.id)}
+                                    onMouseUp={() => setDraggableRowId(null)}
+                                    style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', cursor: 'grab', padding: '0.2rem' }}
+                                    title="ドラッグして並び替え"
+                                  >
+                                    <GripVertical size={16} />
+                                  </div>
+                                </td>
+                                <td style={styles.td}>
+                                  <input 
+                                    value={member.name}
+                                    onChange={e => updateMember(member.id, { name: e.target.value })}
+                                    style={styles.ghostInput}
+                                  />
+                                </td>
+                                <td style={styles.td}>
+                                  <input 
+                                    value={member.title || ''}
+                                    onChange={e => updateMember(member.id, { title: e.target.value || undefined })}
+                                    style={{ ...styles.ghostInput, textAlign: 'center' }}
+                                    placeholder="—"
+                                  />
+                                </td>
+                                <td style={{ ...styles.td, textAlign: 'center' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={member.isInternal ?? false}
+                                    onChange={e => updateMember(member.id, { isInternal: e.target.checked })}
+                                    style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                                  />
+                                </td>
+                                <td style={styles.td}>
+                                  <input 
+                                    value={member.group}
+                                    onChange={e => updateMember(member.id, { group: e.target.value })}
+                                    style={styles.ghostInput}
+                                  />
+                                </td>
+                                <td style={{ ...styles.td, textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'center', gap: '0.25rem' }}>
+                                    <button 
+                                      onClick={() => deleteMember(member.id)}
+                                      style={{ ...styles.iconBtn, color: '#ef4444' }}
+                                      title="削除"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

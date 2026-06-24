@@ -1,0 +1,90 @@
+/* Members Tab Styling - 2-Column Grid Layout & Drag and Drop Groups */
+
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  padding-bottom: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .members-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.members-group-card {
+  background: rgba(30, 30, 40, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  min-height: 250px;
+}
+
+.members-group-card.drag-over {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.members-group-card.dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
+}
+
+.members-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border-color);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.members-group-header:active {
+  cursor: grabbing;
+}
+
+.members-group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.members-group-drag-grip {
+  color: var(--text-muted);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+}
+
+.members-group-body {
+  padding: 1rem;
+  overflow-x: auto;
+  flex: 1;
+}
+
+/* Custom Scrollbar for Group Table */
+.members-group-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.members-group-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.members-group-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+.members-group-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}

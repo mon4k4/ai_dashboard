@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, Users, FolderTree, Filter, Download, GripVertical } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Users, FolderTree, Filter, Download, GripVertical, Edit3 } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -49,8 +49,10 @@ export default function WBS() {
   const [exportMessage, setExportMessage] = useState('');
   const [exportError, setExportError] = useState('');
 
-  // フィルター状態
-  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
+  // フィルター状態 (localStorageに保存)
+  const [showIncompleteOnly, setShowIncompleteOnly] = useState(() => {
+    return localStorage.getItem('wbs_showIncompleteOnly') === 'true';
+  });
   const [filterMemberId, setFilterMemberId] = useState<string>('');
 
   // ドラッグ＆ドロップ用ステート
@@ -479,7 +481,7 @@ export default function WBS() {
               <Plus size={14} />
             </button>
             
-            <button className="wbs-row-action-btn" onClick={(e) => {
+            <button className="wbs-row-action-btn delete" onClick={(e) => {
               e.stopPropagation();
               if (window.confirm(`「${task.title}」を削除してもよろしいですか？\n（子タスクは親から切り離されます）`)) {
                 deleteTask(task.id);
@@ -610,7 +612,10 @@ export default function WBS() {
             <input
               type="checkbox"
               checked={showIncompleteOnly}
-              onChange={e => setShowIncompleteOnly(e.target.checked)}
+              onChange={e => {
+                setShowIncompleteOnly(e.target.checked);
+                localStorage.setItem('wbs_showIncompleteOnly', String(e.target.checked));
+              }}
             />
             <span className="wbs-toggle-slider" />
             <span className="wbs-filter-label">未完了のみ</span>
@@ -649,6 +654,7 @@ export default function WBS() {
             className="wbs-filter-clear-btn"
             onClick={() => {
               setShowIncompleteOnly(false);
+              localStorage.setItem('wbs_showIncompleteOnly', 'false');
               setFilterMemberId('');
             }}
           >
@@ -702,6 +708,9 @@ export default function WBS() {
                       onClick={(e) => e.stopPropagation()}
                     />
                     <div className="wbs-group-card-actions">
+                      <button className="wbs-card-action-btn" onClick={() => setEditingTaskId(groupTask.id)} title="グループを編集">
+                        <Edit3 size={15} />
+                      </button>
                       <button className="wbs-card-action-btn" onClick={() => handleAddChild(groupTask)} title="このグループにタスクを追加">
                         <Plus size={16} />
                       </button>
