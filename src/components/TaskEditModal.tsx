@@ -145,288 +145,290 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
         </div>
 
         <div style={styles.body}>
-          {/* 議事録要約から生成された場合の関連議事録表示 */}
-          {originatingMinute && (
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: '0.25rem', 
-              background: 'rgba(99, 102, 241, 0.08)', 
-              padding: '0.6rem 1rem', 
-              borderRadius: '6px', 
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              marginBottom: '0.25rem'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 600 }}>
-                <FileText size={14} />
-                <span>AI自動生成タスク (議事録由来)</span>
-              </div>
-              <div style={{ fontSize: '0.825rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-                議事録: <span style={{ fontWeight: 600 }}>{originatingMinute.title}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.775rem', color: 'var(--text-muted)' }}>
-                <Calendar size={12} />
-                <span>
-                  開催日時: {originatingMinute.date} 
-                  {originatingMinute.startTime && ` ${originatingMinute.startTime}`}
-                  {originatingMinute.endTime && ` - ${originatingMinute.endTime}`}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* 親タスクへのパンくず・移動ナビゲーション */}
-          {task.parentId && (() => {
-            const parent = tasks.find(t => t.id === task.parentId);
-            if (!parent) return null;
-            return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(255,255,255,0.02)', padding: '0.4rem 0.8rem', borderRadius: '4px', borderLeft: '3px solid var(--accent-primary)', marginBottom: '0.25rem' }}>
-                <CornerDownRight size={14} style={{ color: 'var(--accent-primary)' }} />
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>親タスク:</span>
-                <span 
-                  onClick={() => setActiveTaskId(parent.id)}
-                  style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-primary)', cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  {parent.title}
-                </span>
-              </div>
-            );
-          })()}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <label style={styles.label}>タスク名</label>
-            <input 
-              value={task.title} 
-              onChange={e => updateTask(task.id, { title: e.target.value })}
-              style={styles.input}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>ステータス</label>
-              <select 
-                value={task.status} 
-                onChange={e => updateTask(task.id, { status: e.target.value as any })}
-                style={styles.input}
-              >
-                <option value="todo">To Do</option>
-                <option value="in-progress">In Progress</option>
-                <option value="done">Done</option>
-              </select>
-            </div>
-            
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>進捗率 (%)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
-                <input 
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={task.progress ?? (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)} 
-                  onChange={e => updateTask(task.id, { progress: parseInt(e.target.value) || 0 })}
-                  style={{ flex: 1, accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: '45px', textAlign: 'right', color: 'var(--text-primary)' }}>
-                  {task.progress ?? (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>プロジェクト</label>
-              <select 
-                value={task.projectId || ''} 
-                onChange={e => updateTask(task.id, { projectId: e.target.value })}
-                style={styles.input}
-              >
-                <option value="">-- 未設定 --</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>担当者</label>
-              <select 
-                value={task.memberId || ''} 
-                onChange={e => updateTask(task.id, { 
-                  memberId: e.target.value
-                })}
-                style={styles.input}
-              >
-                <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
-                {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>開始日</label>
-              <input 
-                type="date"
-                value={task.startDate || ''} 
-                onChange={e => updateTask(task.id, { startDate: e.target.value })}
-                style={styles.input}
-              />
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label style={styles.label}>期日 (終了日)</label>
-              <input 
-                type="date"
-                value={task.dueDate || ''} 
-                onChange={e => updateTask(task.id, { dueDate: e.target.value })}
-                style={styles.input}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={styles.label}>詳細情報</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button 
-                  onClick={() => setPreviewDetails(false)} 
-                  style={{ ...styles.tabBtn, background: !previewDetails ? 'rgba(99,102,241,0.1)' : 'transparent', color: !previewDetails ? 'var(--accent-primary)' : 'var(--text-muted)' }}
-                >
-                  <Edit3 size={14} /> 編集
-                </button>
-                <button 
-                  onClick={() => setPreviewDetails(true)} 
-                  style={{ ...styles.tabBtn, background: previewDetails ? 'rgba(99,102,241,0.1)' : 'transparent', color: previewDetails ? 'var(--accent-primary)' : 'var(--text-muted)' }}
-                >
-                  <Eye size={14} /> プレビュー
-                </button>
-              </div>
-            </div>
-            {previewDetails ? (
-              <div style={{ ...styles.input, minHeight: '100px', background: 'rgba(0,0,0,0.2)' }}>
-                {task.details ? <MarkdownRenderer content={task.details} /> : <span style={{ color: 'var(--text-muted)' }}>詳細情報はありません。</span>}
-              </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <textarea 
-                  value={task.details || ''} 
-                  onChange={e => updateTask(task.id, { details: e.target.value })}
-                  onPaste={e => handlePasteImage(e, 'details')}
-                  placeholder="詳細情報を入力... (画像をペーストできます)"
-                  style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
-                />
-                {isUploading && <div style={styles.uploadingBadge}><ImageIcon size={12} /> アップロード中...</div>}
+          <div style={styles.formColumn}>
+            {/* 議事録要約から生成された場合の関連議事録表示 */}
+            {originatingMinute && (
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '0.25rem', 
+                background: 'rgba(99, 102, 241, 0.08)', 
+                padding: '0.6rem 1rem', 
+                borderRadius: '6px', 
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                marginBottom: '0.25rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 600 }}>
+                  <FileText size={14} />
+                  <span>AI自動生成タスク (議事録由来)</span>
+                </div>
+                <div style={{ fontSize: '0.825rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                  議事録: <span style={{ fontWeight: 600 }}>{originatingMinute.title}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.775rem', color: 'var(--text-muted)' }}>
+                  <Calendar size={12} />
+                  <span>
+                    開催日時: {originatingMinute.date} 
+                    {originatingMinute.startTime && ` ${originatingMinute.startTime}`}
+                    {originatingMinute.endTime && ` - ${originatingMinute.endTime}`}
+                  </span>
+                </div>
               </div>
             )}
-          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={styles.label}>対応結果</label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button 
-                  onClick={() => setPreviewResult(false)} 
-                  style={{ ...styles.tabBtn, background: !previewResult ? 'rgba(16,185,129,0.1)' : 'transparent', color: !previewResult ? '#10b981' : 'var(--text-muted)' }}
-                >
-                  <Edit3 size={14} /> 編集
-                </button>
-                <button 
-                  onClick={() => setPreviewResult(true)} 
-                  style={{ ...styles.tabBtn, background: previewResult ? 'rgba(16,185,129,0.1)' : 'transparent', color: previewResult ? '#10b981' : 'var(--text-muted)' }}
-                >
-                  <Eye size={14} /> プレビュー
-                </button>
-              </div>
-            </div>
-            {previewResult ? (
-              <div style={{ ...styles.input, minHeight: '80px', background: 'rgba(0,0,0,0.2)' }}>
-                {task.actionResult ? <MarkdownRenderer content={task.actionResult} /> : <span style={{ color: 'var(--text-muted)' }}>対応結果はありません。</span>}
-              </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <textarea 
-                  value={task.actionResult || ''} 
-                  onChange={e => updateTask(task.id, { actionResult: e.target.value })}
-                  onPaste={e => handlePasteImage(e, 'actionResult')}
-                  placeholder="対応結果や進捗メモを入力... (画像をペーストできます)"
-                  style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
-                />
-                {isUploading && <div style={styles.uploadingBadge}><ImageIcon size={12} /> アップロード中...</div>}
-              </div>
-            )}
-          </div>
-
-          {/* 子タスク管理セクション */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label style={styles.label}>子タスク ({childTasks.length}件)</label>
-              <button 
-                className="btn-primary" 
-                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                onClick={() => {
-                  const newChildId = `task-child-${Date.now()}`;
-                  const newChild = {
-                    id: newChildId,
-                    title: `${task.title} の子タスク`,
-                    status: 'todo' as const,
-                    projectId: task.projectId,
-                    parentId: task.id,
-                    assignee: task.assignee,
-                    memberId: task.memberId,
-                    progress: 0,
-                    isNew: false
-                  };
-                  addTask(newChild);
-                  setActiveTaskId(newChildId);
-                }}
-              >
-                + 子タスクを追加
-              </button>
-            </div>
-            {childTasks.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '0.5rem', borderRadius: '4px' }}>
-                {childTasks.map(c => (
-                  <div 
-                    key={c.id} 
-                    onClick={() => setActiveTaskId(c.id)}
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      padding: '0.4rem 0.6rem', 
-                      background: 'rgba(255,255,255,0.03)', 
-                      borderRadius: '4px', 
-                      cursor: 'pointer',
-                      border: '1px solid transparent',
-                      transition: 'background 0.2s, border-color 0.2s'
-                    }}
+            {/* 親タスクへのパンくず・移動ナビゲーション */}
+            {task.parentId && (() => {
+              const parent = tasks.find(t => t.id === task.parentId);
+              if (!parent) return null;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(255,255,255,0.02)', padding: '0.4rem 0.8rem', borderRadius: '4px', borderLeft: '3px solid var(--accent-primary)', marginBottom: '0.25rem' }}>
+                  <CornerDownRight size={14} style={{ color: 'var(--accent-primary)' }} />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>親タスク:</span>
+                  <span 
+                    onClick={() => setActiveTaskId(parent.id)}
+                    style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-primary)', cursor: 'pointer', textDecoration: 'underline' }}
                   >
-                    <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, marginRight: '0.5rem', color: 'var(--text-primary)' }}>
-                      {c.title}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ 
-                        fontSize: '0.7rem', 
-                        padding: '1px 6px', 
-                        borderRadius: '10px', 
-                        background: getStatusColorBg(c.status),
-                        color: getStatusColorText(c.status),
-                        fontWeight: 600
-                      }}>
-                        {c.status === 'todo' ? 'To Do' : c.status === 'in-progress' ? 'In Progress' : 'Done'}
-                      </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: '35px', textAlign: 'right' }}>
-                        {c.progress || 0}%
-                      </span>
-                      <ArrowRight size={12} style={{ color: 'var(--text-muted)' }} />
-                    </div>
-                  </div>
-                ))}
+                    {parent.title}
+                  </span>
+                </div>
+              );
+            })()}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={styles.label}>タスク名</label>
+              <input 
+                value={task.title} 
+                onChange={e => updateTask(task.id, { title: e.target.value })}
+                style={styles.input}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={styles.label}>ステータス</label>
+                <select 
+                  value={task.status} 
+                  onChange={e => updateTask(task.id, { status: e.target.value as any })}
+                  style={styles.input}
+                >
+                  <option value="todo">To Do</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="done">Done</option>
+                </select>
               </div>
-            ) : (
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>子タスクはありません。</span>
-            )}
+              
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={styles.label}>進捗率 (%)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
+                  <input 
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={task.progress ?? (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)} 
+                    onChange={e => updateTask(task.id, { progress: parseInt(e.target.value) || 0 })}
+                    style={{ flex: 1, accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: '45px', textAlign: 'right', color: 'var(--text-primary)' }}>
+                    {task.progress ?? (task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 0)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={styles.label}>プロジェクト</label>
+                <select 
+                  value={task.projectId || ''} 
+                  onChange={e => updateTask(task.id, { projectId: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="">-- 未設定 --</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={styles.label}>担当者</label>
+                <select 
+                  value={task.memberId || ''} 
+                  onChange={e => updateTask(task.id, { 
+                    memberId: e.target.value
+                  })}
+                  style={styles.input}
+                >
+                  <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
+                  {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={styles.label}>開始日</label>
+                <input 
+                  type="date"
+                  value={task.startDate || ''} 
+                  onChange={e => updateTask(task.id, { startDate: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={styles.label}>期日 (終了日)</label>
+                <input 
+                  type="date"
+                  value={task.dueDate || ''} 
+                  onChange={e => updateTask(task.id, { dueDate: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+            </div>
+
+            {/* 子タスク管理セクション */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={styles.label}>子タスク ({childTasks.length}件)</label>
+                <button 
+                  className="btn-primary" 
+                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                  onClick={() => {
+                    const newChildId = `task-child-${Date.now()}`;
+                    const newChild = {
+                      id: newChildId,
+                      title: `${task.title} の子タスク`,
+                      status: 'todo' as const,
+                      projectId: task.projectId,
+                      parentId: task.id,
+                      assignee: task.assignee,
+                      memberId: task.memberId,
+                      progress: 0,
+                      isNew: false
+                    };
+                    addTask(newChild);
+                    setActiveTaskId(newChildId);
+                  }}
+                >
+                  + 子タスクを追加
+                </button>
+              </div>
+              {childTasks.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '0.5rem', borderRadius: '4px' }}>
+                  {childTasks.map(c => (
+                    <div 
+                      key={c.id} 
+                      onClick={() => setActiveTaskId(c.id)}
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        padding: '0.4rem 0.6rem', 
+                        background: 'rgba(255,255,255,0.03)', 
+                        borderRadius: '4px', 
+                        cursor: 'pointer',
+                        border: '1px solid transparent',
+                        transition: 'background 0.2s, border-color 0.2s'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, marginRight: '0.5rem', color: 'var(--text-primary)' }}>
+                        {c.title}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ 
+                          fontSize: '0.7rem', 
+                          padding: '1px 6px', 
+                          borderRadius: '10px', 
+                          background: getStatusColorBg(c.status),
+                          color: getStatusColorText(c.status),
+                          fontWeight: 600
+                        }}>
+                          {c.status === 'todo' ? 'To Do' : c.status === 'in-progress' ? 'In Progress' : 'Done'}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: '35px', textAlign: 'right' }}>
+                          {c.progress || 0}%
+                        </span>
+                        <ArrowRight size={12} style={{ color: 'var(--text-muted)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>子タスクはありません。</span>
+              )}
+            </div>
+          </div>
+
+          <div style={styles.notesColumn}>
+            <div style={styles.notePanel}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={styles.label}>詳細情報</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    onClick={() => setPreviewDetails(false)} 
+                    style={{ ...styles.tabBtn, background: !previewDetails ? 'rgba(99,102,241,0.1)' : 'transparent', color: !previewDetails ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                  >
+                    <Edit3 size={14} /> 編集
+                  </button>
+                  <button 
+                    onClick={() => setPreviewDetails(true)} 
+                    style={{ ...styles.tabBtn, background: previewDetails ? 'rgba(99,102,241,0.1)' : 'transparent', color: previewDetails ? 'var(--accent-primary)' : 'var(--text-muted)' }}
+                  >
+                    <Eye size={14} /> プレビュー
+                  </button>
+                </div>
+              </div>
+              {previewDetails ? (
+                <div style={{ ...styles.input, ...styles.previewPane }}>
+                  {task.details ? <MarkdownRenderer content={task.details} /> : <span style={{ color: 'var(--text-muted)' }}>詳細情報はありません。</span>}
+                </div>
+              ) : (
+                <div style={styles.textareaWrap}>
+                  <textarea 
+                    value={task.details || ''} 
+                    onChange={e => updateTask(task.id, { details: e.target.value })}
+                    onPaste={e => handlePasteImage(e, 'details')}
+                    placeholder="詳細情報を入力... (画像をペーストできます)"
+                    style={{ ...styles.input, ...styles.textareaFill }}
+                  />
+                  {isUploading && <div style={styles.uploadingBadge}><ImageIcon size={12} /> アップロード中...</div>}
+                </div>
+              )}
+            </div>
+
+            <div style={styles.notePanel}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={styles.label}>対応結果</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    onClick={() => setPreviewResult(false)} 
+                    style={{ ...styles.tabBtn, background: !previewResult ? 'rgba(16,185,129,0.1)' : 'transparent', color: !previewResult ? '#10b981' : 'var(--text-muted)' }}
+                  >
+                    <Edit3 size={14} /> 編集
+                  </button>
+                  <button 
+                    onClick={() => setPreviewResult(true)} 
+                    style={{ ...styles.tabBtn, background: previewResult ? 'rgba(16,185,129,0.1)' : 'transparent', color: previewResult ? '#10b981' : 'var(--text-muted)' }}
+                  >
+                    <Eye size={14} /> プレビュー
+                  </button>
+                </div>
+              </div>
+              {previewResult ? (
+                <div style={{ ...styles.input, ...styles.previewPane }}>
+                  {task.actionResult ? <MarkdownRenderer content={task.actionResult} /> : <span style={{ color: 'var(--text-muted)' }}>対応結果はありません。</span>}
+                </div>
+              ) : (
+                <div style={styles.textareaWrap}>
+                  <textarea 
+                    value={task.actionResult || ''} 
+                    onChange={e => updateTask(task.id, { actionResult: e.target.value })}
+                    onPaste={e => handlePasteImage(e, 'actionResult')}
+                    placeholder="対応結果や進捗メモを入力... (画像をペーストできます)"
+                    style={{ ...styles.input, ...styles.textareaFill }}
+                  />
+                  {isUploading && <div style={styles.uploadingBadge}><ImageIcon size={12} /> アップロード中...</div>}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -443,20 +445,22 @@ const styles = {
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     zIndex: 1000,
     backdropFilter: 'blur(4px)',
+    overflowY: 'auto' as const,
+    padding: '2.5rem 1rem',
   },
   modal: {
     background: 'var(--bg-main)',
-    width: '90%',
-    maxWidth: '650px',
+    width: '96vw',
+    maxWidth: '1300px',
     borderRadius: 'var(--radius-lg)',
     boxShadow: 'var(--shadow-lg)',
     display: 'flex',
     flexDirection: 'column' as const,
-    maxHeight: '90vh',
+    maxHeight: 'calc(100vh - 5rem)',
   },
   header: {
     padding: '1.25rem 1.5rem',
@@ -475,9 +479,30 @@ const styles = {
   body: {
     padding: '1.5rem',
     overflowY: 'auto' as const,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+    alignItems: 'stretch',
+    gap: '1.25rem',
+  },
+  formColumn: {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: '1.25rem',
+    minWidth: 0,
+  },
+  notesColumn: {
+    display: 'grid',
+    gridTemplateRows: 'minmax(220px, 1fr) minmax(220px, 1fr)',
+    gap: '1.25rem',
+    minWidth: 0,
+    height: '100%',
+  },
+  notePanel: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.5rem',
+    minHeight: '220px',
+    minWidth: 0,
   },
   label: {
     fontSize: '0.85rem',
@@ -503,6 +528,23 @@ const styles = {
     fontSize: '0.75rem',
     cursor: 'pointer',
     transition: 'all 0.2s',
+  },
+  textareaWrap: {
+    position: 'relative' as const,
+    display: 'flex',
+    flex: 1,
+    minHeight: 0,
+  },
+  textareaFill: {
+    flex: 1,
+    minHeight: '220px',
+    resize: 'vertical' as const,
+  },
+  previewPane: {
+    flex: 1,
+    minHeight: '220px',
+    background: 'rgba(0,0,0,0.2)',
+    overflowY: 'auto' as const,
   },
   uploadingBadge: {
     position: 'absolute' as const,

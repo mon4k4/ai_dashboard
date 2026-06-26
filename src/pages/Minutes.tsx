@@ -5,6 +5,7 @@ import { summarizeMeeting, startBatchProcess } from '../services/llmService';
 import { FileText, Loader2, Image as ImageIcon, Play, CheckCircle2, CheckSquare, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { ImageLightbox } from '../components/ImageLightbox';
 
 const COLLAPSED_MONTHS_STORAGE_KEY = 'minutesCollapsedMonths';
 
@@ -445,7 +446,7 @@ function MinuteCard({ minute, hideClosedProjects }: { minute: any; hideClosedPro
         </div>
       )}
       {previewImage && (
-        <ImagePreview src={previewImage.src} alt={previewImage.alt} onClose={() => setPreviewImage(null)} />
+        <ImageLightbox src={previewImage.src} alt={previewImage.alt} onClose={() => setPreviewImage(null)} />
       )}
     </div>
   );
@@ -469,30 +470,6 @@ function EditableImageThumb({ src, alt, onPreview, onDelete }: { src: string; al
   );
 }
 
-function ImagePreview({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={styles.previewOverlay}
-    >
-      <button
-        type="button"
-        className="btn-secondary"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        style={styles.previewCloseButton}
-      >
-        閉じる
-      </button>
-      <img src={src} alt={alt} onClick={(e) => e.stopPropagation()} style={styles.previewImage} />
-    </div>
-  );
-}
-
 const styles = {
   imageGallery: { display: 'flex', gap: '0.5rem', overflowX: 'auto' as const, paddingBottom: '0.5rem' },
   thumbnail: { height: '80px', borderRadius: '4px', objectFit: 'cover' as const, border: '1px solid var(--border-color)' },
@@ -500,26 +477,4 @@ const styles = {
   editImageItem: { display: 'flex', flexDirection: 'column' as const, gap: '0.4rem', width: '140px' },
   editThumbnail: { width: '140px', height: '84px', borderRadius: '4px', objectFit: 'cover' as const, border: '1px solid var(--border-color)', cursor: 'zoom-in' },
   deleteImageButton: { padding: '0.35rem 0.5rem', fontSize: '0.8rem', justifyContent: 'center' },
-  previewOverlay: {
-    position: 'fixed' as const,
-    inset: 0,
-    zIndex: 10000,
-    background: 'rgba(0,0,0,0.78)',
-    backdropFilter: 'blur(4px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '2rem',
-    cursor: 'zoom-out'
-  },
-  previewCloseButton: { position: 'absolute' as const, top: '1rem', right: '1rem', padding: '0.5rem 0.75rem' },
-  previewImage: {
-    maxWidth: 'min(96vw, 1400px)',
-    maxHeight: '90vh',
-    objectFit: 'contain' as const,
-    borderRadius: '8px',
-    border: '1px solid var(--border-color)',
-    boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
-    cursor: 'default'
-  },
 };

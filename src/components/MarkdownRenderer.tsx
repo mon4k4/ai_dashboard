@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
+import { ImageLightbox } from './ImageLightbox';
 
 // Initialize mermaid
 mermaid.initialize({
@@ -146,49 +147,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
       </div>
 
       {previewImage && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setPreviewImage(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            background: 'rgba(0, 0, 0, 0.78)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-            cursor: 'zoom-out'
-          }}
-        >
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={(e) => {
-              e.stopPropagation();
-              setPreviewImage(null);
-            }}
-            style={{ position: 'absolute', top: '1rem', right: '1rem', padding: '0.5rem 0.75rem' }}
-          >
-            閉じる
-          </button>
-          <img
-            src={previewImage.src}
-            alt={previewImage.alt}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 'min(96vw, 1400px)',
-              maxHeight: '90vh',
-              objectFit: 'contain',
-              borderRadius: '8px',
-              border: '1px solid var(--border-color)',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
-              cursor: 'default'
-            }}
-          />
-        </div>
+        <ImageLightbox
+          src={previewImage.src}
+          alt={previewImage.alt}
+          onClose={() => setPreviewImage(null)}
+        />
       )}
     </>
   );
