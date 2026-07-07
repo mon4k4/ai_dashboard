@@ -674,10 +674,14 @@ export default function Relation() {
 
             {/* エッジ */}
             {projectTasks.map(task => {
-              if (task.isGroup || !task.dependencies) return null;
+              if (!task.dependencies) return null;
+              const hasChildren = projectTasks.some(child => child.parentId === task.id);
+              if (hasChildren) return null;
               return task.dependencies.map(depId => {
                 const dep = projectTasks.find(t => t.id === depId);
-                if (!dep || dep.isGroup) return null;
+                if (!dep) return null;
+                const depHasChildren = projectTasks.some(child => child.parentId === dep.id);
+                if (depHasChildren) return null;
                 const sx = (dep.x ?? 0) + NODE_WIDTH;
                 const sy = (dep.y ?? 0) + NODE_HEIGHT / 2;
                 const ex = task.x ?? 0;
