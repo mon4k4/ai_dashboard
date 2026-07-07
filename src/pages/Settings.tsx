@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Server, Folder, User, Clock, Palette } from 'lucide-react';
+import { Save, Server, Folder, User, Clock, Palette, Database, RotateCcw } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 
 export default function Settings() {
@@ -14,6 +14,60 @@ export default function Settings() {
   const [monthlyWorkload, setMonthlyWorkload] = useState('155');
   const [colorContrastMode, setColorContrastMode] = useState('auto');
   const [saved, setSaved] = useState(false);
+  const [backups, setBackups] = useState<any[]>([]);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupSuccess, setBackupSuccess] = useState(false);
+
+  const fetchBackups = async () => {
+    try {
+      const res = await fetch('/api/backup/list');
+      const data = await res.json();
+      if (Array.isArray(data)) setBackups(data);
+    } catch (e) {
+      console.error('Failed to fetch backups:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackups();
+  }, []);
+
+  const handleCreateBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      const res = await fetch('/api/backup/create', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setBackupSuccess(true);
+        setTimeout(() => setBackupSuccess(false), 3000);
+        fetchBackups();
+      }
+    } catch (e) {
+      console.error('Failed to create backup:', e);
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleRestoreBackup = async (filename: string) => {
+    if (confirm(`本当にバックアップ「${filename}」から復元しますか？\n現在のデータ（タスク、メンバー、プロジェクト、議事録など）はすべて上書きされます。`)) {
+      try {
+        const res = await fetch('/api/backup/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('復元が完了しました。ページをリロードして最新のデータを読み込みます。');
+          window.location.reload();
+        }
+      } catch (e) {
+        console.error('Failed to restore backup:', e);
+        alert('復元に失敗しました。');
+      }
+    }
+  };
 
   // Load from AppContext settings state
   useEffect(() => {
@@ -194,6 +248,55 @@ export default function Settings() {
           </button>
           {saved && <span style={{ color: 'var(--status-done)', fontWeight: 500 }}>保存しました</span>}
         </div>
+      </div>
+
+      <h2 style={{ marginBottom: '1.5rem', marginTop: '2rem' }}>データバックアップと復元</h2>
+      
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: 0 }}>
+          現在の全データ（タスク、メンバー、プロジェクト、議事録、設定）のバックアップを作成・復元できます。
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button 
+            className="btn-primary" 
+            onClick={handleCreateBackup}
+            disabled={isBackingUp}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <Database size={18} />
+            {isBackingUp ? 'バックアップ中...' : 'バックアップを作成'}
+          </button>
+          {backupSuccess && <span style={{ color: 'var(--status-done)', fontWeight: 500 }}>バックアップが完了しました</span>}
+        </div>
+
+        {backups.length > 0 && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
+              バックアップ履歴一覧 ({backups.length}件)
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.5rem' }}>
+              {backups.map((b) => (
+                <div key={b.filename} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{b.filename}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      作成日時: {new Date(b.createdAt).toLocaleString()} | サイズ: {(b.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <button 
+                    className="btn-secondary" 
+                    onClick={() => handleRestoreBackup(b.filename)}
+                    style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}
+                  >
+                    <RotateCcw size={12} />
+                    復元
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

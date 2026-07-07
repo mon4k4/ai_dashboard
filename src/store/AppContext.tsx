@@ -60,6 +60,7 @@ interface AppState {
   rejectTaskUpdate: (id: string) => void;
   pendingProjectAssociations: PendingProjectAssociation[];
   removePendingProjectAssociation: (minuteId: string) => void;
+  updateMultipleTasks: (updates: { id: string; updates: Partial<TaskExtractResult> }[]) => void;
 }
 
 export interface PendingMemberGroup {
@@ -340,6 +341,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const updateMultipleTasks = useCallback((taskUpdates: { id: string, updates: Partial<TaskExtractResult> }[]) => {
+    setTasks(prev => prev.map(t => {
+      const match = taskUpdates.find(up => up.id === t.id);
+      return match ? { ...t, ...match.updates } : t;
+    }));
+    setMinutes(prevMinutes => prevMinutes.map(m => {
+      let hasChange = false;
+      const nextExtracted = m.extractedTasks?.map(t => {
+        const match = taskUpdates.find(up => up.id === t.id);
+        if (match) {
+          hasChange = true;
+          return { ...t, ...match.updates };
+        }
+        return t;
+      });
+      return hasChange ? { ...m, extractedTasks: nextExtracted } : m;
+    }));
+  }, []);
+
   const commitTask = useCallback((id: string) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, isNew: false } : t));
     setMinutes(prevMinutes => prevMinutes.map(m => {
@@ -531,7 +551,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...rest,
           ...updates,
           details: mergeAppend(rest.details, updates.details),
-          actionResult: mergeAppend(rest.actionResult, updates.actionResult)
+          actionResult: mergeAppend(rest.actionResult, updates.actionResult),
+          updateCount: (rest.updateCount || 0) + 1
         };
       }
       return t;
@@ -560,7 +581,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addMember, updateMember, deleteMember, moveMember, reorderMembers, addReport, updateReport, clearPendingMembers, addPendingMembers,
       settings, saveSettings,
       commitTaskUpdate, rejectTaskUpdate,
-      pendingProjectAssociations, removePendingProjectAssociation
+      pendingProjectAssociations, removePendingProjectAssociation,
+      updateMultipleTasks
     }}>
       {children}
     </AppContext.Provider>

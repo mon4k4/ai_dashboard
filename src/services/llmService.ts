@@ -25,6 +25,10 @@ export interface TaskExtractResult {
     status?: 'todo' | 'in-progress' | 'done';
     progress?: number;
   }; // 保留中の更新内容
+  x?: number; // グラフ表示用のX座標
+  y?: number; // グラフ表示用のY座標
+  dependencies?: string[]; // 依存・関連する先行タスクIDの配列
+  updateCount?: number; // 議事録による自動更新回数
 }
 
 export interface Project {

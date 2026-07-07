@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
 import { buildSummaryPrompt } from './src/prompts/summaryPrompts'
-import { buildTaskExtractionPrompt, buildProjectMatchingPrompt, buildSmartTaskExtractionPrompt } from './src/prompts/taskPrompts'
+import { buildTaskExtractionPrompt, buildProjectMatchingPrompt, buildSmartTaskExtractionPrompt, buildTaskEdgeGenerationPrompt } from './src/prompts/taskPrompts'
 import * as http from 'node:http';
 import * as https from 'node:https';
 
@@ -1983,6 +1983,146 @@ ${minutesText}`;
               newTasksCount: result.newTasks.length,
               updatedTasksCount: result.updatedTasks.length,
             }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+
+        // ====== バックアップ作成 API ======
+        if (req.url === '/api/backup/create' && req.method === 'POST') {
+          try {
+            const dbDir = path.join(process.cwd(), 'data');
+            const backupDir = path.join(dbDir, 'backups');
+            if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+            const result = { tasks: [], minutes: [], projects: [], members: [], reports: [], settings: {} };
+            if (fs.existsSync(dbDir)) {
+              for (const key of Object.keys(result)) {
+                const filePath = path.join(dbDir, `${key}.json`);
+                if (fs.existsSync(filePath)) {
+                  try { result[key] = JSON.parse(fs.readFileSync(filePath, 'utf-8')); } catch (e) {}
+                }
+              }
+            }
+            
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupFilename = `backup_${timestamp}.json`;
+            const backupFilePath = path.join(backupDir, backupFilename);
+            fs.writeFileSync(backupFilePath, JSON.stringify(result, null, 2), 'utf-8');
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, filename: backupFilename }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+
+        // ====== バックアップ一覧取得 API ======
+        if (req.url === '/api/backup/list' && req.method === 'GET') {
+          try {
+            const backupDir = path.join(process.cwd(), 'data', 'backups');
+            const backups = [];
+            if (fs.existsSync(backupDir)) {
+              const files = fs.readdirSync(backupDir);
+              for (const file of files) {
+                if (file.startsWith('backup_') && file.endsWith('.json')) {
+                  const filePath = path.join(backupDir, file);
+                  const stats = fs.statSync(filePath);
+                  backups.push({
+                    filename: file,
+                    createdAt: stats.birthtime || stats.mtime,
+                    size: stats.size
+                  });
+                }
+              }
+            }
+            backups.sort((a, b) => b.filename.localeCompare(a.filename));
+            
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(backups));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+
+        // ====== バックアップ復元 API ======
+        if (req.url === '/api/backup/restore' && req.method === 'POST') {
+          try {
+            const { filename } = await parseBody(req);
+            if (!filename) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'filename is required' }));
+              return;
+            }
+            const backupFilePath = path.join(process.cwd(), 'data', 'backups', filename);
+            if (!fs.existsSync(backupFilePath)) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: 'Backup file not found' }));
+              return;
+            }
+            
+            const backupData = JSON.parse(fs.readFileSync(backupFilePath, 'utf-8'));
+            const dbDir = path.join(process.cwd(), 'data');
+            if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
+            for (const key of ['tasks', 'minutes', 'projects', 'members', 'reports', 'settings']) {
+              if (backupData[key]) {
+                const filePath = path.join(dbDir, `${key}.json`);
+                fs.writeFileSync(filePath, JSON.stringify(backupData[key], null, 2), 'utf-8');
+              }
+            }
+            
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+
+        // ====== LLM自動エッジ生成 API ======
+        if (req.url === '/api/llm/generate-edges' && req.method === 'POST') {
+          try {
+            const { projectId, llmEndpoint: reqLlmEndpoint } = await parseBody(req);
+            if (!projectId) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'projectId is required' }));
+              return;
+            }
+            
+            const dbTasks = loadDataFile('tasks.json');
+            const projectTasks = dbTasks.filter(t => t.projectId === projectId && !t.isGroup && !t.isNew);
+            
+            if (projectTasks.length < 2) {
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify([]));
+              return;
+            }
+
+            const endpoint = reqLlmEndpoint || 'http://localhost:8080/v1';
+            const edgePrompt = buildTaskEdgeGenerationPrompt(projectTasks);
+            
+            const llmResult = await callLlm(endpoint, [
+              { role: 'system', content: 'You are a helpful assistant that strictly outputs valid JSON.' },
+              { role: 'user', content: edgePrompt }
+            ], `タスク間エッジ自動生成`, 0.2, false);
+
+            let parsed = [];
+            try {
+              parsed = JSON.parse(llmResult.output.replace(/```json\n?|```/g, '').trim());
+            } catch (e) {
+              debugLog(`[generate-edges] JSON parse failed: ${e.message}`);
+            }
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(parsed));
           } catch (e) {
             res.statusCode = 500;
             res.end(JSON.stringify({ error: e.message }));

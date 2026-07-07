@@ -116,6 +116,35 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
         <div style={styles.header}>
           <h3 style={{ margin: 0 }}>タスク詳細編集</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {task.isGroup && (
+              <button 
+                onClick={() => {
+                  if (window.confirm(`「${task.title}」をグループ（親タスク）から外し、通常タスクに戻しますか？\n（配下の子タスクは親から切り離されます）`)) {
+                    updateTask(task.id, { isGroup: false, parentId: undefined });
+                    onClose();
+                  }
+                }}
+                style={{
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  borderRadius: '4px',
+                  color: 'var(--accent-primary)',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '0.25rem 0.6rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  transition: 'opacity 0.2s',
+                }}
+                title="グループを解除して通常タスクに戻す"
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+              >
+                <span>グループ解除</span>
+              </button>
+            )}
             <button 
               onClick={() => {
                 if (window.confirm('このタスクを削除してもよろしいですか？')) {

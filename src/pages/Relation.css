@@ -1,0 +1,355 @@
+/* ====== Relation Page Styles ====== */
+
+.relation-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+/* ====== ヘッダー ====== */
+.relation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.relation-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.relation-header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.relation-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* ====== プロジェクトタブ ====== */
+.relation-tab-container {
+  display: flex;
+  gap: 0;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.relation-tab {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.relation-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ====== SVGキャンバス ====== */
+.relation-canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  background: #0c1222;
+  user-select: none;
+}
+
+.relation-canvas:active {
+  cursor: grabbing;
+}
+
+.relation-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ====== ノード ====== */
+.rel-node {
+  fill: rgba(22, 33, 55, 0.92);
+  stroke: rgba(148, 163, 184, 0.18);
+  stroke-width: 1.5;
+  rx: 14;
+  ry: 14;
+  cursor: move;
+  transition: stroke 0.15s;
+}
+
+.rel-node-group:hover .rel-node {
+  stroke: var(--accent-primary);
+  stroke-width: 2;
+}
+
+/* 更新頻度強調 */
+.rel-node.freq-medium {
+  stroke: #f59e0b;
+  stroke-width: 2.5;
+}
+
+.rel-node.freq-high {
+  stroke: #ef4444;
+  stroke-width: 3.5;
+}
+
+/* ステータステキスト */
+.rel-status-text {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* ====== コネクタハンドル ====== */
+.rel-connector {
+  fill: rgba(59, 130, 246, 0.7);
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 1.5;
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 0.2s, r 0.15s;
+}
+
+.rel-node-group:hover .rel-connector {
+  opacity: 1;
+}
+
+.rel-connector:hover {
+  r: 8;
+  fill: #2563eb;
+}
+
+/* 操作アイコン */
+.rel-action-icon {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.rel-node-group:hover .rel-action-icon {
+  opacity: 1;
+}
+
+/* ====== グループ囲み ====== */
+.rel-group-rect {
+  fill: rgba(99, 102, 241, 0.03);
+  stroke: rgba(99, 102, 241, 0.18);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  rx: 16;
+  ry: 16;
+  transition: fill 0.2s, stroke 0.2s;
+}
+
+.rel-group-rect:hover {
+  fill: rgba(99, 102, 241, 0.06);
+  stroke: rgba(99, 102, 241, 0.4);
+}
+
+.rel-group-label {
+  fill: rgba(165, 180, 252, 0.6);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* ====== エッジ ====== */
+.rel-edge {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.35);
+  stroke-width: 2.5;
+  marker-end: url(#arrow);
+  transition: stroke 0.15s;
+}
+
+.rel-edge-group:hover .rel-edge {
+  stroke: #60a5fa;
+  stroke-width: 3;
+}
+
+.rel-edge-del {
+  fill: rgba(239, 68, 68, 0.85);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
+.rel-edge-group:hover .rel-edge-del {
+  opacity: 1;
+}
+
+/* ====== 対応結果ノード ====== */
+.rel-action-node {
+  fill: rgba(6, 78, 59, 0.5);
+  stroke: rgba(16, 185, 129, 0.5);
+  stroke-width: 1.5;
+  rx: 22;
+  ry: 22;
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+
+.rel-action-node:hover {
+  fill: rgba(6, 78, 59, 0.7);
+}
+
+/* ====== ズームパネル ====== */
+.rel-zoom-panel {
+  position: absolute;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  padding: 0.35rem;
+  backdrop-filter: blur(12px);
+}
+
+.rel-zoom-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rel-zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.rel-zoom-label {
+  font-size: 0.65rem;
+  color: rgba(148, 163, 184, 0.6);
+  padding: 0.1rem 0;
+  text-align: center;
+  width: 100%;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ====== モーダル ====== */
+.relation-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.relation-modal {
+  width: 90%;
+  max-width: 620px;
+  max-height: 80vh;
+  background: linear-gradient(145deg, #1e293b, #0f172a);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+.relation-modal-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.relation-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.relation-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* エッジ提案リスト */
+.edge-proposal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.edge-proposal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.edge-proposal-check {
+  margin-top: 0.2rem;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
+}
+
+.edge-proposal-flow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.edge-proposal-arrow {
+  color: #3b82f6;
+  font-size: 1rem;
+}
+
+.edge-proposal-reason {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
