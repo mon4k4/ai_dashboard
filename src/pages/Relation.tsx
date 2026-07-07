@@ -372,7 +372,7 @@ export default function Relation() {
           <button
             key={proj.id}
             className="relation-tab"
-            onClick={() => { setActiveProjectId(proj.id); setPan({ x: 0, y: 0 }); setZoom(1); setExpandedActions({}); }}
+            onClick={() => { setActiveProjectId(proj.id); setPan({ x: 0, y: 0 }); setZoom(1); }}
             style={activeProjectId === proj.id ? { borderBottom: `3px solid ${proj.color || 'var(--accent-primary)'}`, color: 'var(--text-primary)', backgroundColor: 'rgba(255,255,255,0.04)' } : {}}
           >
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', backgroundColor: proj.color, marginRight: 8, boxShadow: `0 0 8px ${proj.color}` }} />

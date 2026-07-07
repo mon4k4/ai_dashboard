@@ -292,7 +292,7 @@
   stroke-dasharray: 8 5;
   rx: 16;
   ry: 16;
-  transition: all 0.2s ease-in-out;
+  transition: fill 0.2s ease-in-out, stroke 0.2s ease-in-out, filter 0.2s ease-in-out;
 }
 
 .rel-group-rect:hover {
