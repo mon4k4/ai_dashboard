@@ -357,28 +357,63 @@ export default function Layout() {
                                 />
                               </div>
                               
-                              <div style={{ display: 'flex', gap: '1rem' }}>
-                                <div style={{ flex: 1 }}>
-                                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>プロジェクト:</label>
-                                  <select 
-                                    value={task.projectId || ''} 
-                                    onChange={(e) => updateTask(task.id, { projectId: e.target.value })}
-                                    style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem' }}
-                                  >
-                                    <option value="">-- 未設定 --</option>
-                                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                  </select>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', gap: '1rem' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>プロジェクト:</label>
+                                    <select 
+                                      value={task.projectId || ''} 
+                                      onChange={(e) => updateTask(task.id, { projectId: e.target.value })}
+                                      style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem' }}
+                                    >
+                                      <option value="">-- 未設定 --</option>
+                                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>担当者:</label>
+                                    <select 
+                                      value={task.memberId || ''} 
+                                      onChange={(e) => updateTask(task.id, { memberId: e.target.value })}
+                                      style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem' }}
+                                    >
+                                      <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
+                                      {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    </select>
+                                  </div>
                                 </div>
-                                <div style={{ flex: 1 }}>
-                                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>担当者:</label>
-                                  <select 
-                                    value={task.memberId || ''} 
-                                    onChange={(e) => updateTask(task.id, { memberId: e.target.value })}
-                                    style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem' }}
-                                  >
-                                    <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
-                                    {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                  </select>
+
+                                <div style={{ display: 'flex', gap: '1rem' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>親グループ:</label>
+                                    <select 
+                                      value={task.parentId || ''} 
+                                      onChange={(e) => updateTask(task.id, { parentId: e.target.value })}
+                                      style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem' }}
+                                    >
+                                      <option value="">-- 親グループなし --</option>
+                                      {tasks.filter(t => t.projectId === task.projectId && t.isGroup && !t.isNew).map(g => (
+                                        <option key={g.id} value={g.id}>{g.title}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>関連タスク (エッジ):</label>
+                                    <select 
+                                      multiple
+                                      value={task.dependencies || []} 
+                                      onChange={(e) => {
+                                        const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                        updateTask(task.id, { dependencies: selected });
+                                      }}
+                                      style={{ width: '100%', padding: '0.25rem', fontSize: '0.85rem', height: '60px' }}
+                                      title="複数選択可 (Ctrl/Cmdキーを押しながらクリック)"
+                                    >
+                                      {tasks.filter(t => t.projectId === task.projectId && !t.isGroup && !t.isNew && t.id !== task.id).map(t => (
+                                        <option key={t.id} value={t.id}>{t.title}</option>
+                                      ))}
+                                    </select>
+                                  </div>
                                 </div>
                               </div>
                             </div>
