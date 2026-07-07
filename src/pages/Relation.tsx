@@ -171,7 +171,8 @@ export default function Relation() {
     const map = new Map<string, { id: string; title: string; x: number; y: number; width: number; height: number }>();
     
     const calculateBox = (node: TreeNode): { xmin: number; ymin: number; xmax: number; ymax: number } | null => {
-      if (!node.isGroup) {
+      if (node.children.length === 0) {
+        // 末端タスク: そのタスクカードのBBをそのまま返す
         const tx = node.task.x ?? 0;
         const ty = node.task.y ?? 0;
         return {
@@ -229,10 +230,13 @@ export default function Relation() {
     const recurse = (id: string) => {
       const children = projectTasks.filter(t => t.parentId === id);
       children.forEach(c => {
-        if (!c.isGroup) {
-          leaves.push(c);
-        } else {
+        const hasChildren = projectTasks.some(t => t.parentId === c.id);
+        if (hasChildren) {
+          // 子を持つノードはさらに再帰して末端だけを収集
           recurse(c.id);
+        } else {
+          // 末端タスクのみ収集
+          leaves.push(c);
         }
       });
     };
@@ -382,7 +386,10 @@ export default function Relation() {
   // 木構造に基づいて再帰的にノード（グループおよびタスクカード）を描画する関数
   const renderTreeNodes = (nodes: TreeNode[]): React.ReactNode => {
     return nodes.map(node => {
-      if (!node.isGroup) {
+      const isLeaf = node.children.length === 0;
+
+      if (isLeaf) {
+        // 末端タスクノード（タスクカードとして描画）
         const task = node.task;
         const tx = task.x ?? 100;
         const ty = task.y ?? 100;
@@ -471,7 +478,7 @@ export default function Relation() {
         );
       }
 
-      // グループノードの場合
+      // 子を持つノード = グループボックスとして描画
       const box = groupBoxesMap.get(node.id);
       if (!box) return null;
 
