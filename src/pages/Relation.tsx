@@ -485,7 +485,7 @@ export default function Relation() {
                     <path d={`M ${prevX} ${prevY} L ${nodeX} ${nodeY + ACTION_NODE_H / 2}`} stroke="#10b981" strokeWidth={2} fill="none" markerEnd="url(#arrow-green)" />
                     <rect x={nodeX} y={nodeY} width={ACTION_NODE_W} height={ACTION_NODE_H} className="rel-action-node" />
                     <foreignObject x={nodeX + 8} y={nodeY + 6} width={ACTION_NODE_W - 16} height={ACTION_NODE_H - 12}>
-                      <div style={{ fontSize: '0.72rem', color: '#d1fae5', lineHeight: 1.35, overflow: 'hidden', wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const }}>
+                      <div style={{ fontSize: '0.72rem', color: '#d1fae5', lineHeight: 1.35, overflow: 'hidden', wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 3, lineClamp: '3', WebkitBoxOrient: 'vertical' as const }}>
                         {res}
                       </div>
                     </foreignObject>
