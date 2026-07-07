@@ -94,43 +94,113 @@ export default function Relation() {
   // ====== 自動初期配置 ======
   const performAutoLayout = useCallback((force = false) => {
     if (!activeProjectId || projectTasks.length === 0) return;
-    const groups = projectTasks.filter(t => t.isGroup || projectTasks.some(c => c.parentId === t.id && !c.isGroup));
-    const groupMap: Record<string, TaskExtractResult[]> = {};
-    const orphans: TaskExtractResult[] = [];
 
+    // 1. ツリー構造の構築
+    const nodesMap = new Map<string, TreeNode>();
     projectTasks.forEach(t => {
-      if (t.isGroup) return;
-      if (t.parentId && groupMap[t.parentId] !== undefined) {
-        groupMap[t.parentId].push(t);
-      } else if (t.parentId) {
-        if (!groupMap[t.parentId]) groupMap[t.parentId] = [];
-        groupMap[t.parentId].push(t);
+      nodesMap.set(t.id, { id: t.id, task: t, isGroup: false, children: [] });
+    });
+    
+    const roots: TreeNode[] = [];
+    projectTasks.forEach(t => {
+      const node = nodesMap.get(t.id)!;
+      if (t.parentId && nodesMap.has(t.parentId)) {
+        nodesMap.get(t.parentId)!.children.push(node);
       } else {
-        orphans.push(t);
+        roots.push(node);
       }
     });
 
-    const updates: { id: string, updates: Partial<TaskExtractResult> }[] = [];
-    let curY = 100;
-    const xGap = 280;
-    const yGroupGap = 300;
+    const sortNodes = (nodes: TreeNode[]) => {
+      nodes.sort((a, b) => (a.task.wbsOrder || 0) - (b.task.wbsOrder || 0));
+      nodes.forEach(n => sortNodes(n.children));
+    };
+    sortNodes(roots);
 
-    groups.forEach(g => {
-      const children = groupMap[g.id] || [];
-      children.sort((a, b) => (a.wbsOrder || 0) - (b.wbsOrder || 0));
-      children.forEach((t, i) => {
-        if (force || t.x == null || t.y == null) {
-          updates.push({ id: t.id, updates: { x: 120 + i * xGap, y: curY + 80 } });
+    const PAD = 30;
+    const TITLE_H = 35;
+    const GAP_X = 60;
+    const GAP_Y = 60;
+    const MAX_COLS = 3; // 3列で折り返し
+    
+    // 2. 各ノードのサイズをボトムアップで事前計算 (2パスの1パス目)
+    const measureNode = (node: TreeNode): { width: number, height: number } => {
+      if (node.children.length === 0) {
+        const dim = { width: NODE_WIDTH, height: NODE_HEIGHT };
+        (node as any)._dim = dim;
+        return dim;
+      }
+
+      let maxWidth = 0;
+      let totalHeight = PAD + TITLE_H;
+      let rowWidth = 0;
+      let rowHeight = 0;
+      let colCount = 0;
+
+      node.children.forEach(child => {
+        const dim = measureNode(child);
+        if (colCount >= MAX_COLS) {
+          maxWidth = Math.max(maxWidth, rowWidth - GAP_X);
+          totalHeight += rowHeight + GAP_Y;
+          rowWidth = 0;
+          rowHeight = 0;
+          colCount = 0;
         }
+        rowWidth += dim.width + GAP_X;
+        rowHeight = Math.max(rowHeight, dim.height);
+        colCount++;
       });
-      curY += yGroupGap;
-    });
+      
+      maxWidth = Math.max(maxWidth, rowWidth - GAP_X);
+      totalHeight += rowHeight + PAD;
 
-    orphans.sort((a, b) => (a.wbsOrder || 0) - (b.wbsOrder || 0));
-    orphans.forEach((t, i) => {
-      if (force || t.x == null || t.y == null) {
-        updates.push({ id: t.id, updates: { x: 120 + i * xGap, y: curY + 40 } });
+      const dim = { width: maxWidth + PAD * 2, height: totalHeight };
+      (node as any)._dim = dim;
+      return dim;
+    };
+
+    roots.forEach(r => measureNode(r));
+
+    // 3. 座標の割り当て (2パスの2パス目)
+    const updates: { id: string, updates: Partial<TaskExtractResult> }[] = [];
+    
+    const placeNode = (node: TreeNode, x: number, y: number) => {
+      if (node.children.length === 0) {
+        if (force || node.task.x == null || node.task.y == null) {
+          updates.push({ id: node.id, updates: { x: Math.round(x), y: Math.round(y) } });
+        }
+        return;
       }
+
+      let cx = x + PAD;
+      let cy = y + PAD + TITLE_H;
+      let rowHeight = 0;
+      let colCount = 0;
+
+      node.children.forEach(child => {
+        const dim = (child as any)._dim as { width: number, height: number };
+        
+        if (colCount >= MAX_COLS) {
+          cx = x + PAD;
+          cy += rowHeight + GAP_Y;
+          rowHeight = 0;
+          colCount = 0;
+        }
+
+        placeNode(child, cx, cy);
+        
+        cx += dim.width + GAP_X;
+        rowHeight = Math.max(rowHeight, dim.height);
+        colCount++;
+      });
+    };
+
+    let curY = 100;
+    const ROOT_GAP_Y = 100;
+    roots.forEach(root => {
+      const dim = (root as any)._dim;
+      placeNode(root, 100, curY);
+      curY += dim.height + ROOT_GAP_Y;
     });
 
     if (updates.length > 0) updateMultipleTasks(updates);
