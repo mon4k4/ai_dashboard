@@ -119,6 +119,17 @@ function normalizeMinuteImages(minute: MinuteSummary): MinuteSummary {
   };
 }
 
+function mergeAppend(existing: string | undefined, incoming: string | undefined): string {
+  const tExisting = (existing || '').trim();
+  const tIncoming = (incoming || '').trim();
+  
+  if (!tIncoming) return tExisting;
+  if (!tExisting) return tIncoming;
+  if (tExisting === tIncoming) return tExisting;
+  
+  return `${tExisting} → ${tIncoming}`;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<TaskExtractResult[]>([]);
   const [minutes, setMinutes] = useState<MinuteSummary[]>([]);
@@ -516,7 +527,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (t.id === id) {
         const { pendingUpdates, ...rest } = t;
         const updates = { ...pendingUpdates, ...editedFields };
-        return { ...rest, ...updates };
+        return {
+          ...rest,
+          ...updates,
+          details: mergeAppend(rest.details, updates.details),
+          actionResult: mergeAppend(rest.actionResult, updates.actionResult)
+        };
       }
       return t;
     }));

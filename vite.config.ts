@@ -318,6 +318,32 @@ async function callLlm(endpoint, messages, label, temp = 0.3, streamOption = tru
     throw err;
   }
 }
+
+// ====== ファイル名の日時パースヘルパー ======
+function getFileDateTime(filename) {
+  // 形式: transcript_yyyy_mm-dd_hh.mm.ss.txt/vtt
+  // 例: 定例会議 transcript_2026_07-07_13.35.46.txt
+  const match = filename.match(/transcript_(\d{4})_(\d{2})-(\d{2})_(\d{2})\.(\d{2})\.(\d{2})/);
+  if (match) {
+    const [_, y, m, d, hh, mm, ss] = match;
+    return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}`).getTime();
+  }
+  
+  // フォールバック: より一般的な yyyymmdd もしくは yyyy-mm-dd_hh.mm.ss など
+  const matchGen = filename.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})(?:\D+(\d{2})\D+(\d{2})\D+(\d{2}))?/);
+  if (matchGen) {
+    const y = matchGen[1];
+    const m = matchGen[2];
+    const d = matchGen[3];
+    const hh = matchGen[4] || '00';
+    const mm = matchGen[5] || '00';
+    const ss = matchGen[6] || '00';
+    return new Date(`${y}-${m}-${d}T${hh}:${mm}:${ss}`).getTime();
+  }
+  
+  return 0;
+}
+
 // ====== 未処理アイテムの取得（フォルダおよびフラットファイル両対応） ======
 function getUnprocessedItems(dirPath, includeProcessed = false) {
   const items = [];
@@ -334,8 +360,17 @@ function getUnprocessedItems(dirPath, includeProcessed = false) {
         
         const subFiles = fs.readdirSync(fullPath);
         // .txt または .vtt ファイルを探す
-        const targetFile = subFiles.find(sf => sf.endsWith('.txt')) || subFiles.find(sf => sf.endsWith('.vtt'));
-        if (targetFile) {
+        const targetFiles = subFiles.filter(sf => sf.endsWith('.txt') || sf.endsWith('.vtt'));
+        if (targetFiles.length > 0) {
+          targetFiles.sort((a, b) => {
+            const timeA = getFileDateTime(a);
+            const timeB = getFileDateTime(b);
+            if (timeA !== timeB) {
+              return timeA - timeB;
+            }
+            return a.localeCompare(b);
+          });
+          const targetFile = targetFiles[targetFiles.length - 1];
           const targetFilePath = path.join(fullPath, targetFile);
           const rawContent = fs.readFileSync(targetFilePath, 'utf-8');
           const isVtt = targetFile.endsWith('.vtt');
