@@ -5,10 +5,10 @@ import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
 import './Relation.css';
 
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 80;
-const ACTION_NODE_W = 160;
-const ACTION_NODE_H = 50;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 105;
+const ACTION_NODE_W = 165;
+const ACTION_NODE_H = 55;
 
 export default function Relation() {
   const { tasks, projects, settings, addTask, updateTask, deleteTask, updateMultipleTasks } = useAppContext();
@@ -482,46 +482,75 @@ export default function Relation() {
               const isExpanded = expandedActions[task.id];
               return (
                 <g key={task.id} className="rel-node-group" onMouseDown={(e) => handleNodeDown(task.id, e)}>
-                  {/* ノードカード */}
-                  <rect x={tx} y={ty} width={NODE_WIDTH} height={NODE_HEIGHT} className={`rel-node ${freqClass(uc)}`} filter="url(#node-shadow)" />
+                  <foreignObject
+                    x={tx}
+                    y={ty}
+                    width={NODE_WIDTH}
+                    height={NODE_HEIGHT}
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    <div 
+                      className={`rel-html-card status-${task.status} ${freqClass(uc)}`}
+                      style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        pointerEvents: 'auto' 
+                      }}
+                    >
+                      {/* 左側のステータスカラー線 */}
+                      <div className="rel-card-border-indicator" style={{ backgroundColor: statusColor(task.status) }} />
+                      
+                      <div className="rel-card-main-content">
+                        {/* タイトル（3行表示） */}
+                        <div className="rel-card-title-text" title={task.title}>
+                          {task.title}
+                        </div>
+                        
+                        {/* フッター */}
+                        <div className="rel-card-footer-row">
+                          {/* ステータスバッジ (●付き) */}
+                          <span className="rel-card-status" style={{ color: statusColor(task.status) }}>
+                            <span className="rel-status-dot" style={{ backgroundColor: statusColor(task.status) }} />
+                            {statusLabel(task.status)}
+                          </span>
 
-                  {/* ステータスバー（上辺） */}
-                  <rect x={tx} y={ty} width={NODE_WIDTH} height={4} rx={12} fill={statusColor(task.status)} style={{ opacity: 0.8 }} />
+                          {/* 更新カウンター */}
+                          {uc > 0 && (
+                            <span className="rel-card-freq-badge" title="議事録からの更新頻度">
+                              更新: {uc}
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                  {/* タイトル（2行） */}
-                  <foreignObject x={tx + 12} y={ty + 12} width={NODE_WIDTH - 60} height={40}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f1f5f9', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-all' }}>
-                      {task.title}
+                      {/* アクションボタン (ホバーで表示) */}
+                      <div className="rel-card-hover-actions">
+                        {hasActions && (
+                          <button
+                            className={`rel-card-action-btn-expand ${isExpanded ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); toggleAction(task.id); }}
+                            title={isExpanded ? "対応結果を隠す" : "対応結果を表示"}
+                          >
+                            {isExpanded ? '閉' : '歴'}
+                          </button>
+                        )}
+                        <button
+                          className="rel-card-action-btn-edit"
+                          onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); }}
+                          title="編集"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="rel-card-action-btn-delete"
+                          onClick={(e) => { e.stopPropagation(); if(window.confirm(`「${task.title}」を削除してもよろしいですか？`)) deleteTask(task.id); }}
+                          title="削除"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </foreignObject>
-
-                  {/* ステータスバッジ */}
-                  <rect x={tx + 12} y={ty + NODE_HEIGHT - 24} width={62} height={16} rx={4} fill={statusColor(task.status)} fillOpacity={0.15} />
-                  <text x={tx + 43} y={ty + NODE_HEIGHT - 12} textAnchor="middle" className="rel-status-text" fill={statusColor(task.status)}>{statusLabel(task.status)}</text>
-
-                  {/* 対応結果展開ボタン */}
-                  {hasActions && (
-                    <g transform={`translate(${tx + NODE_WIDTH - 24},${ty + NODE_HEIGHT - 22})`} style={{ cursor: 'pointer' }}
-                      onClick={(e) => { e.stopPropagation(); toggleAction(task.id); }}>
-                      <circle r={9} fill={isExpanded ? 'rgba(16,185,129,0.4)' : 'rgba(255,255,255,0.08)'} stroke={isExpanded ? '#10b981' : 'rgba(255,255,255,0.15)'} strokeWidth={1} />
-                      <text textAnchor="middle" dominantBaseline="middle" fill={isExpanded ? '#6ee7b7' : 'rgba(255,255,255,0.5)'} fontSize="9" fontWeight="bold" style={{ pointerEvents: 'none' }}>
-                        {isExpanded ? 'H' : 'A'}
-                      </text>
-                    </g>
-                  )}
-
-                  {/* 操作ボタン：編集 */}
-                  <g transform={`translate(${tx + NODE_WIDTH - 42},${ty + 10})`} style={{ cursor: 'pointer' }} className="rel-action-icon"
-                    onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); }}>
-                    <rect width={18} height={18} rx={4} fill="rgba(255,255,255,0.04)" />
-                    <text x={9} y={13} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.55)">✎</text>
-                  </g>
-                  {/* 操作ボタン：削除 */}
-                  <g transform={`translate(${tx + NODE_WIDTH - 22},${ty + 10})`} style={{ cursor: 'pointer' }} className="rel-action-icon"
-                    onClick={(e) => { e.stopPropagation(); if(window.confirm(`「${task.title}」を削除してもよろしいですか？`)) deleteTask(task.id); }}>
-                    <rect width={18} height={18} rx={4} fill="rgba(239,68,68,0.08)" />
-                    <text x={9} y={13} textAnchor="middle" fontSize="11" fill="rgba(239,68,68,0.6)">✕</text>
-                  </g>
 
                   {/* コネクタハンドル（右辺中央） */}
                   <circle cx={tx + NODE_WIDTH} cy={ty + NODE_HEIGHT / 2} r={6} className="rel-connector"

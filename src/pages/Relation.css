@@ -93,37 +93,158 @@
 }
 
 /* ====== ノード ====== */
-.rel-node {
-  fill: rgba(22, 33, 55, 0.92);
-  stroke: rgba(148, 163, 184, 0.18);
-  stroke-width: 1.5;
-  rx: 14;
-  ry: 14;
-  cursor: move;
-  transition: stroke 0.15s;
+.rel-html-card {
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  box-sizing: border-box;
 }
 
-.rel-node-group:hover .rel-node {
-  stroke: var(--accent-primary);
-  stroke-width: 2;
+.rel-node-group:hover .rel-html-card {
+  border-color: var(--accent-primary);
+  box-shadow: 0 12px 20px -3px rgba(59, 130, 246, 0.25), 0 0 10px rgba(59, 130, 246, 0.1);
+  transform: translateY(-1px);
 }
 
 /* 更新頻度強調 */
-.rel-node.freq-medium {
-  stroke: #f59e0b;
-  stroke-width: 2.5;
+.rel-html-card.freq-medium {
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2) !important;
 }
 
-.rel-node.freq-high {
-  stroke: #ef4444;
-  stroke-width: 3.5;
+.rel-html-card.freq-high {
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.3) !important;
 }
 
-/* ステータステキスト */
-.rel-status-text {
-  font-size: 0.6rem;
+/* 左端ステータス帯 */
+.rel-card-border-indicator {
+  width: 5px;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+/* メインコンテンツ */
+.rel-card-main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 10px 8px 10px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* タイトル (3行表示) */
+.rel-card-title-text {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+  height: 3.9em;
+  margin-bottom: 2px;
+}
+
+/* フッター行 */
+.rel-card-footer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+}
+
+/* ステータスドットバッジ */
+.rel-card-status {
+  font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.02em;
+}
+
+.rel-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* 更新カウンター */
+.rel-card-freq-badge {
+  font-size: 0.6rem;
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* アクションエリア (ホバー表示) */
+.rel-card-hover-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: auto;
+}
+
+.rel-html-card:hover .rel-card-hover-actions {
+  opacity: 1;
+}
+
+/* アクションボタン */
+.rel-card-hover-actions button {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #9ca3af;
+  font-size: 0.65rem;
+  padding: 0 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  transition: all 0.15s;
+}
+
+.rel-card-hover-actions button:hover {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.rel-card-hover-actions button.rel-card-action-btn-expand.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.rel-card-hover-actions button.rel-card-action-btn-expand.active:hover {
+  background: #10b981;
+  color: white;
+  border-color: #10b981;
+}
+
+.rel-card-hover-actions button.rel-card-action-btn-delete:hover {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
 }
 
 /* ====== コネクタハンドル ====== */
