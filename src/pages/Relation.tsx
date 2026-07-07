@@ -130,21 +130,114 @@ export default function Relation() {
     }
   }, [projectTasks, performAutoLayout]);
 
-  // ====== グループ矩形 ======
-  const groupBoxes = useMemo(() => {
-    const groups = projectTasks.filter(t => t.isGroup || projectTasks.some(c => c.parentId === t.id && !c.isGroup));
-    return groups.map(g => {
-      const children = projectTasks.filter(t => t.parentId === g.id && !t.isGroup);
-      if (children.length === 0) return null;
-      let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
-      children.forEach(t => {
-        const tx = t.x ?? 0; const ty = t.y ?? 0;
-        mnx = Math.min(mnx, tx); mny = Math.min(mny, ty);
-        mxx = Math.max(mxx, tx + NODE_WIDTH); mxy = Math.max(mxy, ty + NODE_HEIGHT);
+  interface TreeNode {
+    id: string;
+    task: any;
+    isGroup: boolean;
+    children: TreeNode[];
+  }
+
+  // プロジェクトタスクから木構造を構築する
+  const taskTree = useMemo(() => {
+    const taskMap = new Map<string, TreeNode>();
+    
+    // まずすべてのタスクのTreeNodeを作成
+    projectTasks.forEach(t => {
+      taskMap.set(t.id, {
+        id: t.id,
+        task: t,
+        isGroup: !!t.isGroup,
+        children: []
       });
+    });
+
+    const roots: TreeNode[] = [];
+
+    // 親子関係を設定
+    projectTasks.forEach(t => {
+      const node = taskMap.get(t.id)!;
+      if (t.parentId && taskMap.has(t.parentId)) {
+        taskMap.get(t.parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    return roots;
+  }, [projectTasks]);
+
+  // 各ノードのバウンディングボックスを再帰的に計算し保持するMap
+  const groupBoxesMap = useMemo(() => {
+    const map = new Map<string, { id: string; title: string; x: number; y: number; width: number; height: number }>();
+    
+    const calculateBox = (node: TreeNode): { xmin: number; ymin: number; xmax: number; ymax: number } | null => {
+      if (!node.isGroup) {
+        const tx = node.task.x ?? 0;
+        const ty = node.task.y ?? 0;
+        return {
+          xmin: tx,
+          ymin: ty,
+          xmax: tx + NODE_WIDTH,
+          ymax: ty + NODE_HEIGHT
+        };
+      }
+
+      // グループの場合、子ノードのボックスをマージする
+      let xmin = Infinity, ymin = Infinity, xmax = -Infinity, ymax = -Infinity;
+      let hasValidChild = false;
+
+      node.children.forEach(child => {
+        const childBox = calculateBox(child);
+        if (childBox) {
+          hasValidChild = true;
+          xmin = Math.min(xmin, childBox.xmin);
+          ymin = Math.min(ymin, childBox.ymin);
+          xmax = Math.max(xmax, childBox.xmax);
+          ymax = Math.max(ymax, childBox.ymax);
+        }
+      });
+
+      if (!hasValidChild) return null;
+
       const pad = 30;
-      return { id: g.id, title: g.title, x: mnx - pad, y: mny - pad - 35, width: mxx - mnx + pad * 2, height: mxy - mny + pad * 2 + 35 };
-    }).filter(Boolean) as { id: string; title: string; x: number; y: number; width: number; height: number }[];
+      const box = {
+        id: node.id,
+        title: node.task.title,
+        x: xmin - pad,
+        y: ymin - pad - 35,
+        width: (xmax - xmin) + pad * 2,
+        height: (ymax - ymin) + pad * 2 + 35
+      };
+
+      map.set(node.id, box);
+
+      return {
+        xmin: box.x,
+        ymin: box.y,
+        xmax: box.x + box.width,
+        ymax: box.y + box.height
+      };
+    };
+
+    taskTree.forEach(root => calculateBox(root));
+    return map;
+  }, [taskTree]);
+
+  // groupId 配下のすべての末端タスクを再帰的に取得する
+  const getAllDescendantLeafTasks = useCallback((groupId: string): any[] => {
+    const leaves: any[] = [];
+    const recurse = (id: string) => {
+      const children = projectTasks.filter(t => t.parentId === id);
+      children.forEach(c => {
+        if (!c.isGroup) {
+          leaves.push(c);
+        } else {
+          recurse(c.id);
+        }
+      });
+    };
+    recurse(groupId);
+    return leaves;
   }, [projectTasks]);
 
   // ====== マウスイベント ======
@@ -175,9 +268,9 @@ export default function Relation() {
   const handleGroupDown = (groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (e.button !== 0) return;
-    const children = projectTasks.filter(t => t.parentId === groupId && !t.isGroup);
-    if (children.length === 0) return;
-    dragGroupStartTasks.current = children.map(t => ({
+    const descendants = getAllDescendantLeafTasks(groupId);
+    if (descendants.length === 0) return;
+    dragGroupStartTasks.current = descendants.map(t => ({
       id: t.id,
       x: t.x ?? 0,
       y: t.y ?? 0
@@ -284,6 +377,122 @@ export default function Relation() {
   const bezier = (x1: number, y1: number, x2: number, y2: number) => {
     const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
     return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  };
+
+  // 木構造に基づいて再帰的にノード（グループおよびタスクカード）を描画する関数
+  const renderTreeNodes = (nodes: TreeNode[]): React.ReactNode => {
+    return nodes.map(node => {
+      if (!node.isGroup) {
+        const task = node.task;
+        const tx = task.x ?? 100;
+        const ty = task.y ?? 100;
+        const uc = task.updateCount || 0;
+        const hasActions = !!task.actionResult;
+        const isExpanded = expandedActions[task.id];
+        return (
+          <g key={task.id} className="rel-node-group" onMouseDown={(e) => handleNodeDown(task.id, e)}>
+            <foreignObject
+              x={tx}
+              y={ty}
+              width={NODE_WIDTH}
+              height={NODE_HEIGHT}
+              style={{ pointerEvents: 'none' }}
+            >
+              <div 
+                className={`rel-html-card status-${task.status} ${freqClass(uc)}`}
+                style={{ 
+                  width: '100%', 
+                  height: '100%', 
+                  pointerEvents: 'auto' 
+                }}
+              >
+                {/* 左側のステータスカラー線 */}
+                <div className="rel-card-border-indicator" style={{ backgroundColor: statusColor(task.status) }} />
+                
+                <div className="rel-card-main-content">
+                  {/* タイトル（3行表示） */}
+                  <div className="rel-card-title-text" title={task.title}>
+                    {task.title}
+                  </div>
+                  
+                  {/* フッター */}
+                  <div className="rel-card-footer-row">
+                    {/* ステータスバッジ (●付き) */}
+                    <span className="rel-card-status" style={{ color: statusColor(task.status) }}>
+                      <span className="rel-status-dot" style={{ backgroundColor: statusColor(task.status) }} />
+                      {statusLabel(task.status)}
+                    </span>
+
+                    {/* 履歴インジケーター */}
+                    {hasActions && (
+                      <span 
+                        className={`rel-card-history-indicator ${isExpanded ? 'expanded' : ''}`}
+                        title="対応結果（履歴）あり。クリックで展開"
+                      >
+                        <History size={12} />
+                      </span>
+                    )}
+
+                    {/* 更新カウンター */}
+                    {uc > 0 && (
+                      <span className="rel-card-freq-badge" title="議事録からの更新頻度">
+                        更新: {uc}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* アクションボタン (ホバーで表示) */}
+                <div className="rel-card-hover-actions">
+                  <button
+                    className="rel-card-action-btn-edit"
+                    onMouseDown={(ev) => ev.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); }}
+                    title="編集"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    className="rel-card-action-btn-delete"
+                    onMouseDown={(ev) => ev.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); if(window.confirm(`「${task.title}」を削除してもよろしいですか？`)) deleteTask(task.id); }}
+                    title="削除"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </foreignObject>
+
+            {/* コネクタハンドル（右辺中央） */}
+            <circle cx={tx + NODE_WIDTH} cy={ty + NODE_HEIGHT / 2} r={6} className="rel-connector"
+              onMouseDown={(e) => handleConnectorDown(task.id, e)} />
+          </g>
+        );
+      }
+
+      // グループノードの場合
+      const box = groupBoxesMap.get(node.id);
+      if (!box) return null;
+
+      return (
+        <g key={`grp-${node.id}`} className="rel-node-group">
+          <rect
+            x={box.x}
+            y={box.y}
+            width={box.width}
+            height={box.height}
+            className="rel-group-rect"
+            onMouseDown={(e) => handleGroupDown(node.id, e)}
+            style={{ cursor: 'grab' }}
+          />
+          <text x={box.x + 14} y={box.y + 22} className="rel-group-label">{node.task.title}</text>
+          
+          {/* 子ノードを再帰的に描画 */}
+          {renderTreeNodes(node.children)}
+        </g>
+      );
+    });
   };
 
   // ====== AI自動エッジ生成 ======
@@ -419,21 +628,8 @@ export default function Relation() {
 
           <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
 
-            {/* グループ囲みボックス */}
-            {groupBoxes.map(box => (
-              <g key={`grp-${box.id}`}>
-                <rect
-                  x={box.x}
-                  y={box.y}
-                  width={box.width}
-                  height={box.height}
-                  className="rel-group-rect"
-                  onMouseDown={(e) => handleGroupDown(box.id, e)}
-                  style={{ cursor: 'grab' }}
-                />
-                <text x={box.x + 14} y={box.y + 22} className="rel-group-label">{box.title}</text>
-              </g>
-            ))}
+            {/* グループおよびタスクノードの再帰的階層描画 */}
+            {renderTreeNodes(taskTree)}
 
             {/* エッジ */}
             {projectTasks.map(task => {
@@ -492,94 +688,6 @@ export default function Relation() {
                   </g>
                 );
               });
-            })}
-
-            {/* タスクノード */}
-            {projectTasks.filter(t => !t.isGroup).map(task => {
-              const tx = task.x ?? 100; const ty = task.y ?? 100;
-              const uc = task.updateCount || 0;
-              const hasActions = !!task.actionResult;
-              const isExpanded = expandedActions[task.id];
-              return (
-                <g key={task.id} className="rel-node-group" onMouseDown={(e) => handleNodeDown(task.id, e)}>
-                  <foreignObject
-                    x={tx}
-                    y={ty}
-                    width={NODE_WIDTH}
-                    height={NODE_HEIGHT}
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    <div 
-                      className={`rel-html-card status-${task.status} ${freqClass(uc)}`}
-                      style={{ 
-                        width: '100%', 
-                        height: '100%', 
-                        pointerEvents: 'auto' 
-                      }}
-                    >
-                      {/* 左側のステータスカラー線 */}
-                      <div className="rel-card-border-indicator" style={{ backgroundColor: statusColor(task.status) }} />
-                      
-                      <div className="rel-card-main-content">
-                        {/* タイトル（3行表示） */}
-                        <div className="rel-card-title-text" title={task.title}>
-                          {task.title}
-                        </div>
-                        
-                        {/* フッター */}
-                        <div className="rel-card-footer-row">
-                          {/* ステータスバッジ (●付き) */}
-                          <span className="rel-card-status" style={{ color: statusColor(task.status) }}>
-                            <span className="rel-status-dot" style={{ backgroundColor: statusColor(task.status) }} />
-                            {statusLabel(task.status)}
-                          </span>
-
-                          {/* 履歴インジケーター */}
-                          {hasActions && (
-                            <span 
-                              className={`rel-card-history-indicator ${isExpanded ? 'expanded' : ''}`}
-                              title="対応結果（履歴）あり。クリックで展開"
-                            >
-                              <History size={12} />
-                            </span>
-                          )}
-
-                          {/* 更新カウンター */}
-                          {uc > 0 && (
-                            <span className="rel-card-freq-badge" title="議事録からの更新頻度">
-                              更新: {uc}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* アクションボタン (ホバーで表示) */}
-                      <div className="rel-card-hover-actions">
-                        <button
-                          className="rel-card-action-btn-edit"
-                          onMouseDown={(ev) => ev.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); }}
-                          title="編集"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          className="rel-card-action-btn-delete"
-                          onMouseDown={(ev) => ev.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); if(window.confirm(`「${task.title}」を削除してもよろしいですか？`)) deleteTask(task.id); }}
-                          title="削除"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  </foreignObject>
-
-                  {/* コネクタハンドル（右辺中央） */}
-                  <circle cx={tx + NODE_WIDTH} cy={ty + NODE_HEIGHT / 2} r={6} className="rel-connector"
-                    onMouseDown={(e) => handleConnectorDown(task.id, e)} />
-                </g>
-              );
             })}
           </g>
         </svg>
