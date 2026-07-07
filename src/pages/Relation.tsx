@@ -365,7 +365,10 @@ export default function Relation() {
     } else if (connectingFrom) {
       const svgPt = toSvg(e.clientX, e.clientY);
       const target = projectTasks.find(t => {
-        if (t.id === connectingFrom || t.isGroup) return false;
+        if (t.id === connectingFrom) return false;
+        // 子を持つノードはグループボックスとして描画されているためエッジ接続対象外
+        const hasChildren = projectTasks.some(child => child.parentId === t.id);
+        if (hasChildren) return false;
         const tx = t.x ?? 0; const ty = t.y ?? 0;
         return svgPt.x >= tx && svgPt.x <= tx + NODE_WIDTH && svgPt.y >= ty && svgPt.y <= ty + NODE_HEIGHT;
       });
