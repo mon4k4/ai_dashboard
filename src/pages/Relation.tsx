@@ -518,7 +518,7 @@ export default function Relation() {
                   </g>
                   {/* 操作ボタン：削除 */}
                   <g transform={`translate(${tx + NODE_WIDTH - 22},${ty + 10})`} style={{ cursor: 'pointer' }} className="rel-action-icon"
-                    onClick={(e) => { e.stopPropagation(); if(confirm(`「${task.title}」を削除しますか？`)) deleteTask(task.id); }}>
+                    onClick={(e) => { e.stopPropagation(); if(window.confirm(`「${task.title}」を削除してもよろしいですか？`)) deleteTask(task.id); }}>
                     <rect width={18} height={18} rx={4} fill="rgba(239,68,68,0.08)" />
                     <text x={9} y={13} textAnchor="middle" fontSize="11" fill="rgba(239,68,68,0.6)">✕</text>
                   </g>
