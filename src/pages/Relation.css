@@ -229,16 +229,24 @@
   border-color: var(--accent-primary);
 }
 
-.rel-card-hover-actions button.rel-card-action-btn-expand.active {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border-color: rgba(16, 185, 129, 0.3);
+/* 履歴インジケーター */
+.rel-card-history-indicator {
+  color: rgba(16, 185, 129, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  margin-left: 8px;
 }
 
-.rel-card-hover-actions button.rel-card-action-btn-expand.active:hover {
-  background: #10b981;
-  color: white;
-  border-color: #10b981;
+.rel-html-card:hover .rel-card-history-indicator {
+  color: rgba(16, 185, 129, 0.75);
+}
+
+.rel-card-history-indicator.expanded {
+  color: #10b981 !important;
+  filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
+  transform: rotate(15deg);
 }
 
 .rel-card-hover-actions button.rel-card-action-btn-delete:hover {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Plus, ZoomIn, ZoomOut, Maximize2, GitFork, RefreshCw, Network } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Maximize2, GitFork, RefreshCw, Network, History } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import TaskEditModal from '../components/TaskEditModal';
 import type { TaskExtractResult } from '../services/llmService';
@@ -21,6 +21,7 @@ export default function Relation() {
 
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const dragStartCoords = useRef({ x: 0, y: 0 });
 
   const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
   const dragGroupStartTasks = useRef<{ id: string; x: number; y: number }[]>([]);
@@ -162,6 +163,7 @@ export default function Relation() {
     const task = projectTasks.find(t => t.id === id);
     const svgPt = toSvg(e.clientX, e.clientY);
     dragOffset.current = { x: svgPt.x - (task?.x ?? 0), y: svgPt.y - (task?.y ?? 0) };
+    dragStartCoords.current = { x: e.clientX, y: e.clientY };
     setDraggedNodeId(id);
   };
 
@@ -214,6 +216,15 @@ export default function Relation() {
 
   const handleMouseUp = (e: React.MouseEvent) => {
     if (draggedNodeId) {
+      // マウス押し下げから離すまでの距離を算出 (ドラッグ移動か単純クリックかの判定)
+      const dx = Math.abs(e.clientX - dragStartCoords.current.x);
+      const dy = Math.abs(e.clientY - dragStartCoords.current.y);
+      const isClick = dx < 6 && dy < 6;
+
+      if (isClick) {
+        // カード全体のクリックとして対応結果表示をトグル
+        toggleAction(draggedNodeId);
+      }
       setDraggedNodeId(null);
     } else if (draggedGroupId) {
       setDraggedGroupId(null);
@@ -514,6 +525,16 @@ export default function Relation() {
                             {statusLabel(task.status)}
                           </span>
 
+                          {/* 履歴インジケーター */}
+                          {hasActions && (
+                            <span 
+                              className={`rel-card-history-indicator ${isExpanded ? 'expanded' : ''}`}
+                              title="対応結果（履歴）あり。クリックで展開"
+                            >
+                              <History size={12} />
+                            </span>
+                          )}
+
                           {/* 更新カウンター */}
                           {uc > 0 && (
                             <span className="rel-card-freq-badge" title="議事録からの更新頻度">
@@ -525,17 +546,9 @@ export default function Relation() {
 
                       {/* アクションボタン (ホバーで表示) */}
                       <div className="rel-card-hover-actions">
-                        {hasActions && (
-                          <button
-                            className={`rel-card-action-btn-expand ${isExpanded ? 'active' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); toggleAction(task.id); }}
-                            title={isExpanded ? "対応結果を隠す" : "対応結果を表示"}
-                          >
-                            {isExpanded ? '閉' : '歴'}
-                          </button>
-                        )}
                         <button
                           className="rel-card-action-btn-edit"
+                          onMouseDown={(ev) => ev.stopPropagation()}
                           onClick={(e) => { e.stopPropagation(); setEditingTaskId(task.id); }}
                           title="編集"
                         >
@@ -543,6 +556,7 @@ export default function Relation() {
                         </button>
                         <button
                           className="rel-card-action-btn-delete"
+                          onMouseDown={(ev) => ev.stopPropagation()}
                           onClick={(e) => { e.stopPropagation(); if(window.confirm(`「${task.title}」を削除してもよろしいですか？`)) deleteTask(task.id); }}
                           title="削除"
                         >
