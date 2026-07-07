@@ -36,6 +36,19 @@ export default function Relation() {
       return saved ? JSON.parse(saved) : {};
     } catch { return {}; }
   });
+
+  // 対応結果カードのオフセット (キー: `taskId-idx`, デフォルトはタスクカードの右端)
+  const [actionNodeOffsets, setActionNodeOffsets] = useState<Record<string, { x: number; y: number }>>(() => {
+    try {
+      const saved = localStorage.getItem('relation_actionNodeOffsets');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  const [draggedActionKey, setDraggedActionKey] = useState<string | null>(null);
+  const dragActionStartMouse = useRef({ x: 0, y: 0 });
+  const dragActionStartOffset = useRef({ x: 0, y: 0 });
+
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   const [showEdgeModal, setShowEdgeModal] = useState(false);
@@ -310,6 +323,17 @@ export default function Relation() {
         }
       }));
       updateMultipleTasks(updates);
+    } else if (draggedActionKey) {
+      const svgPt = toSvg(e.clientX, e.clientY);
+      const dx = svgPt.x - dragActionStartMouse.current.x;
+      const dy = svgPt.y - dragActionStartMouse.current.y;
+      setActionNodeOffsets(prev => ({
+        ...prev,
+        [draggedActionKey]: {
+          x: Math.round(dragActionStartOffset.current.x + dx),
+          y: Math.round(dragActionStartOffset.current.y + dy)
+        }
+      }));
     } else if (connectingFrom) {
       const svgPt = toSvg(e.clientX, e.clientY);
       setConnectingEnd({ x: svgPt.x, y: svgPt.y });
@@ -331,6 +355,13 @@ export default function Relation() {
     } else if (draggedGroupId) {
       setDraggedGroupId(null);
       dragGroupStartTasks.current = [];
+    } else if (draggedActionKey) {
+      // 対応結果ノードのドラッグ終了 → localStorage に保存
+      setActionNodeOffsets(prev => {
+        localStorage.setItem('relation_actionNodeOffsets', JSON.stringify(prev));
+        return prev;
+      });
+      setDraggedActionKey(null);
     } else if (connectingFrom) {
       const svgPt = toSvg(e.clientX, e.clientY);
       const target = projectTasks.find(t => {
@@ -674,20 +705,52 @@ export default function Relation() {
 
             {/* 対応結果エッジ & ノード */}
             {projectTasks.map(task => {
-              if (task.isGroup || !expandedActions[task.id] || !task.actionResult) return null;
+              if (!expandedActions[task.id] || !task.actionResult) return null;
+              // 子を持つ（グループ）ノードは対応結果を表示しない
+              const hasChildren = projectTasks.some(t => t.parentId === task.id);
+              if (hasChildren) return null;
               const results = task.actionResult.split(' → ').map(r => r.trim()).filter(Boolean);
               return results.map((res, idx) => {
-                const nodeX = (task.x ?? 0) + NODE_WIDTH + 50 + idx * (ACTION_NODE_W + 50);
-                const nodeY = (task.y ?? 0) + (NODE_HEIGHT - ACTION_NODE_H) / 2;
+                const key = `${task.id}-${idx}`;
+                const defaultOffsetX = NODE_WIDTH + 50 + idx * (ACTION_NODE_W + 50);
+                const defaultOffsetY = (NODE_HEIGHT - ACTION_NODE_H) / 2;
+                const offset = actionNodeOffsets[key] ?? { x: defaultOffsetX, y: defaultOffsetY };
+                const nodeX = (task.x ?? 0) + offset.x;
+                const nodeY = (task.y ?? 0) + offset.y;
+                // エッジの始点: 前のカード右端 or タスクカード右端
                 const prevX = idx === 0
                   ? (task.x ?? 0) + NODE_WIDTH
-                  : (task.x ?? 0) + NODE_WIDTH + 50 + (idx - 1) * (ACTION_NODE_W + 50) + ACTION_NODE_W;
-                const prevY = (task.y ?? 0) + NODE_HEIGHT / 2;
+                  : (() => {
+                      const prevKey = `${task.id}-${idx - 1}`;
+                      const prevOffset = actionNodeOffsets[prevKey] ?? { x: NODE_WIDTH + 50 + (idx - 1) * (ACTION_NODE_W + 50), y: (NODE_HEIGHT - ACTION_NODE_H) / 2 };
+                      return (task.x ?? 0) + prevOffset.x + ACTION_NODE_W;
+                    })();
+                const prevY = idx === 0
+                  ? (task.y ?? 0) + NODE_HEIGHT / 2
+                  : (() => {
+                      const prevKey = `${task.id}-${idx - 1}`;
+                      const prevOffset = actionNodeOffsets[prevKey] ?? { x: NODE_WIDTH + 50 + (idx - 1) * (ACTION_NODE_W + 50), y: (NODE_HEIGHT - ACTION_NODE_H) / 2 };
+                      return (task.y ?? 0) + prevOffset.y + ACTION_NODE_H / 2;
+                    })();
+                const isDragging = draggedActionKey === key;
                 return (
                   <g key={`act-${task.id}-${idx}`}>
                     <path d={`M ${prevX} ${prevY} L ${nodeX} ${nodeY + ACTION_NODE_H / 2}`} stroke="#10b981" strokeWidth={2} fill="none" markerEnd="url(#arrow-green)" />
-                    <rect x={nodeX} y={nodeY} width={ACTION_NODE_W} height={ACTION_NODE_H} className="rel-action-node" />
-                    <foreignObject x={nodeX + 8} y={nodeY + 6} width={ACTION_NODE_W - 16} height={ACTION_NODE_H - 12}>
+                    <rect
+                      x={nodeX} y={nodeY}
+                      width={ACTION_NODE_W} height={ACTION_NODE_H}
+                      className="rel-action-node"
+                      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        if (e.button !== 0) return;
+                        const svgPt = toSvg(e.clientX, e.clientY);
+                        dragActionStartMouse.current = svgPt;
+                        dragActionStartOffset.current = actionNodeOffsets[key] ?? { x: defaultOffsetX, y: defaultOffsetY };
+                        setDraggedActionKey(key);
+                      }}
+                    />
+                    <foreignObject x={nodeX + 8} y={nodeY + 6} width={ACTION_NODE_W - 16} height={ACTION_NODE_H - 12} style={{ pointerEvents: 'none' }}>
                       <div style={{ fontSize: '0.72rem', color: '#d1fae5', lineHeight: 1.35, overflow: 'hidden', wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 3, lineClamp: '3', WebkitBoxOrient: 'vertical' as const }}>
                         {res}
                       </div>
