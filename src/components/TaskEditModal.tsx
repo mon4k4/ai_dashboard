@@ -277,8 +277,7 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              
-              {task.parentId && (
+              {!(task.title && task.title.startsWith('【') && task.title.endsWith('】')) && (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <label style={styles.label}>担当者</label>
                   <select 

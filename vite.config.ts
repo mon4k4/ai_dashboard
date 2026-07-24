@@ -703,7 +703,7 @@ async function processFile(file, llmEndpoint, streamOption = true) {
     const groupTasks = dbTasks.filter(t =>
       t.projectId === matchedProjectId &&
       !t.isNew &&
-      (!t.parentId || t.isGroup || dbTasks.some(c => c.parentId === t.id))
+      ((t.title && t.title.startsWith('【') && t.title.endsWith('】')) || t.isGroup || dbTasks.some(c => c.parentId === t.id))
     );
     const projectMembers = dbMembers;
 

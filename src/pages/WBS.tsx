@@ -269,12 +269,12 @@ export default function WBS() {
     return members;
   }, [members, projects, activeProjectId]);
 
-  // 親グループタスク (isGroup: true または子タスクがある最上位タスク) の抽出
+  // 親グループタスク (isGroup: true または子タスクがある最上位タスク、またはタイトルが【】で囲まれている) の抽出
   const groupTasks = useMemo(() => {
     return filteredTasks.filter(t => {
       if (t.parentId) return false;
-      // グループと定義されているもの、もしくは昔のデータで子タスクが存在するもの
-      return !!t.isGroup || filteredTasks.some(c => c.parentId === t.id);
+      // グループと定義されているもの、昔のデータで子タスクが存在するもの、またはタイトルが【】で囲まれているもの
+      return (t.title && t.title.startsWith('【') && t.title.endsWith('】')) || !!t.isGroup || filteredTasks.some(c => c.parentId === t.id);
     });
   }, [filteredTasks]);
 

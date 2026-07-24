@@ -268,7 +268,7 @@ export default function Scheduler() {
     // 未承認タスク（isNew: true）は除外する
     const approvedTasks = tasks.filter(t => !t.isNew);
     let filteredTasks = approvedTasks.filter(t => {
-      if (!t.parentId) return true; // 一番上の親グループは常に表示
+      if (t.title && t.title.startsWith('【') && t.title.endsWith('】')) return true; // 一番上の親グループは常に表示
       let include = true;
       if (showOnlyMine && myMemberId && t.memberId !== myMemberId) include = false;
       if (hideCompleted && t.status === 'done') include = false;
@@ -835,8 +835,8 @@ export default function Scheduler() {
                                       overflow: 'hidden', 
                                       textOverflow: 'ellipsis', 
                                       fontSize: '0.9rem',
-                                      fontWeight: task.depth === 0 ? 'bold' : 'normal',
-                                      color: task.depth === 0 ? 'var(--accent-primary)' : 'inherit'
+                                      fontWeight: (task.title && task.title.startsWith('【') && task.title.endsWith('】')) ? 'bold' : 'normal',
+                                      color: (task.title && task.title.startsWith('【') && task.title.endsWith('】')) ? 'var(--accent-primary)' : 'inherit'
                                     }}>
                                       {task.title}
                                     </span>
