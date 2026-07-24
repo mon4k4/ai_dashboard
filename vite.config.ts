@@ -608,9 +608,16 @@ async function processFile(file, llmEndpoint, streamOption = true) {
       title = file.filename;
     }
   } else {
-    const dateMatch = file.filename.match(/^(\d{4})(\d{2})(\d{2})/);
-    if (dateMatch) {
-      extractedDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+    // "会議名 2026-07-22.txt" などの形式に対応
+    const namedMatch = file.filename.match(/^(.+?)\s+(\d{4})[-_]?(\d{2})[-_]?(\d{2})/);
+    if (namedMatch) {
+      title = namedMatch[1].trim();
+      extractedDate = `${namedMatch[2]}-${namedMatch[3]}-${namedMatch[4]}`;
+    } else {
+      const dateMatch = file.filename.match(/^(\d{4})[-_]?(\d{2})[-_]?(\d{2})/);
+      if (dateMatch) {
+        extractedDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+      }
     }
   }
 
