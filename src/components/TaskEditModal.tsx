@@ -277,19 +277,22 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={styles.label}>担当者</label>
-                <select 
-                  value={task.memberId || ''} 
-                  onChange={e => updateTask(task.id, { 
-                    memberId: e.target.value
-                  })}
-                  style={styles.input}
-                >
-                  <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
-                  {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              </div>
+              
+              {task.parentId && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={styles.label}>担当者</label>
+                  <select 
+                    value={task.memberId || ''} 
+                    onChange={e => updateTask(task.id, { 
+                      memberId: e.target.value
+                    })}
+                    style={styles.input}
+                  >
+                    <option value="">-- 未割り当て (推奨: {task.assignee}) --</option>
+                    {displayMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '1rem' }}>

@@ -267,13 +267,13 @@ export default function Scheduler() {
     
     // 未承認タスク（isNew: true）は除外する
     const approvedTasks = tasks.filter(t => !t.isNew);
-    let filteredTasks = showOnlyMine && myMemberId
-      ? approvedTasks.filter(t => t.memberId === myMemberId)
-      : approvedTasks;
-
-    if (hideCompleted) {
-      filteredTasks = filteredTasks.filter(t => t.status !== 'done');
-    }
+    let filteredTasks = approvedTasks.filter(t => {
+      if (!t.parentId) return true; // 一番上の親グループは常に表示
+      let include = true;
+      if (showOnlyMine && myMemberId && t.memberId !== myMemberId) include = false;
+      if (hideCompleted && t.status === 'done') include = false;
+      return include;
+    });
 
     const buildTreeList = (taskList: TaskExtractResult[]): (TaskExtractResult & { depth: number; hasChildren: boolean; rootIndex: number })[] => {
       const childrenMap = new Map<string, TaskExtractResult[]>();
@@ -829,7 +829,15 @@ export default function Scheduler() {
                                     )}
 
                                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: getStatusColor(task.status), flexShrink: 0 }} />
-                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem' }}>
+                                    <span style={{ 
+                                      flex: 1, 
+                                      whiteSpace: 'nowrap', 
+                                      overflow: 'hidden', 
+                                      textOverflow: 'ellipsis', 
+                                      fontSize: '0.9rem',
+                                      fontWeight: task.depth === 0 ? 'bold' : 'normal',
+                                      color: task.depth === 0 ? 'var(--accent-primary)' : 'inherit'
+                                    }}>
                                       {task.title}
                                     </span>
                                   </div>

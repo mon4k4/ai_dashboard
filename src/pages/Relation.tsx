@@ -207,11 +207,39 @@ export default function Relation() {
   }, [activeProjectId, projectTasks, updateMultipleTasks]);
 
   useEffect(() => {
-    if (projectTasks.length > 0) {
-      const needsLayout = projectTasks.some(t => !t.isGroup && t.x == null);
-      if (needsLayout) performAutoLayout(false);
+    if (projectTasks.length === 0) return;
+    
+    const tasksWithoutCoords = projectTasks.filter(t => t.x == null || t.y == null);
+    if (tasksWithoutCoords.length > 0) {
+      const updates: { id: string, updates: Partial<TaskExtractResult> }[] = [];
+      tasksWithoutCoords.forEach(t => {
+        let nx = 200 - pan.x / zoom;
+        let ny = 200 - pan.y / zoom;
+        
+        if (t.parentId) {
+          // 同じ親を持つ他の子タスク（座標があるもの）を探す
+          const siblings = projectTasks.filter(s => s.parentId === t.parentId && s.id !== t.id && s.x != null);
+          if (siblings.length > 0) {
+            // 最後の兄弟の右下に配置
+            const last = siblings[siblings.length - 1];
+            nx = (last.x || 0) + 20;
+            ny = (last.y || 0) + 80;
+          } else {
+            // 親タスクそのものの座標を探す
+            const pNode = projectTasks.find(pt => pt.id === t.parentId);
+            if (pNode && pNode.x != null) {
+              nx = pNode.x + 20;
+              ny = (pNode.y || 0) + 40;
+            }
+          }
+        }
+        updates.push({ id: t.id, updates: { x: Math.round(nx), y: Math.round(ny) } });
+      });
+      if (updates.length > 0) {
+        updateMultipleTasks(updates);
+      }
     }
-  }, [projectTasks, performAutoLayout]);
+  }, [projectTasks, pan, zoom, updateMultipleTasks]);
 
   interface TreeNode {
     id: string;

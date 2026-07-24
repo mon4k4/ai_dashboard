@@ -571,6 +571,7 @@ function processSmartTaskResults(parsed, projectId, minute) {
         progress: item.progress || 0,
         projectId: projectId || undefined,
         parentId: item.parentId || undefined,
+        dependencies: Array.isArray(item.dependencies) ? item.dependencies : [],
         isNew: true,
       };
       newTasks.push(task);
@@ -695,7 +696,7 @@ async function processFile(file, llmEndpoint, streamOption = true) {
     const groupTasks = dbTasks.filter(t =>
       t.projectId === matchedProjectId &&
       !t.isNew &&
-      (t.isGroup || dbTasks.some(c => c.parentId === t.id))
+      (!t.parentId || t.isGroup || dbTasks.some(c => c.parentId === t.id))
     );
     const projectMembers = dbMembers;
 
