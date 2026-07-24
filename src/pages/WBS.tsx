@@ -408,7 +408,8 @@ export default function WBS() {
   };
 
   const handleTaskDragOver = (e: React.DragEvent, taskId: string) => {
-    if (draggedTaskIdRef.current && draggedTaskIdRef.current !== taskId) {
+    const sourceId = draggedTaskIdRef.current || draggedCardIdRef.current;
+    if (sourceId && sourceId !== taskId) {
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -419,6 +420,36 @@ export default function WBS() {
   const handleTaskDrop = (e: React.DragEvent, targetTaskId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // 1) グループカードが特定のタスク行にドロップされた場合（グループ → タスクの入れ子）
+    const sourceCardId = draggedCardIdRef.current || e.dataTransfer.getData('text/card-id');
+    if (sourceCardId && sourceCardId !== targetTaskId) {
+      if (isDescendant(sourceCardId, targetTaskId)) {
+        alert('タスクを自分自身や自分の子タスクの配下へ移動することはできません。');
+      } else {
+        updateTask(sourceCardId, { parentId: targetTaskId });
+        setCardOrder(prev => prev.filter(id => id !== sourceCardId));
+        if (activeProjectId) {
+          const saved = localStorage.getItem(`wbs_card_order_${activeProjectId}`);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              localStorage.setItem(`wbs_card_order_${activeProjectId}`, JSON.stringify(parsed.filter((id: string) => id !== sourceCardId)));
+            } catch (err) {}
+          }
+        }
+        if (collapsedTaskIds[targetTaskId]) {
+          toggleCollapse(targetTaskId);
+        }
+      }
+      draggedCardIdRef.current = null;
+      setDraggedCardId(null);
+      setDragOverTaskId(null);
+      setDragOverCardId(null);
+      return;
+    }
+
+    // 2) タスク（またはネストされたサブグループ行）がドロップされた場合
     const sourceTaskId = draggedTaskIdRef.current || e.dataTransfer.getData('text/task-id');
     if (sourceTaskId && sourceTaskId !== targetTaskId) {
       // 循環参照チェック
@@ -435,7 +466,7 @@ export default function WBS() {
 
       // 同じ親を持つ場合は入れ子ではなく「順序入れ替え」を行う
       if (sourceTask && targetTask && sourceTask.parentId === targetTask.parentId) {
-        const siblings = tasks.filter(t => t.parentId === targetTask.parentId && t.projectId === targetTask.projectId && !t.isGroup);
+        const siblings = tasks.filter(t => t.parentId === targetTask.parentId && t.projectId === targetTask.projectId);
         siblings.sort((a, b) => (a.wbsOrder ?? 999999) - (b.wbsOrder ?? 999999));
         const srcIdx = siblings.findIndex(t => t.id === sourceTaskId);
         const tgtIdx = siblings.findIndex(t => t.id === targetTaskId);
@@ -448,11 +479,15 @@ export default function WBS() {
       } else {
         // 異なる親の場合は入れ子（子タスクとして移動）
         updateTask(sourceTaskId, { parentId: targetTaskId });
+        if (collapsedTaskIds[targetTaskId]) {
+          toggleCollapse(targetTaskId);
+        }
       }
     }
     draggedTaskIdRef.current = null;
     setDraggedTaskId(null);
     setDragOverTaskId(null);
+    setDragOverCardId(null);
   };
 
   // カードボディー（またはヘッダー）へのタスク/グループドロップハンドラー
@@ -494,7 +529,7 @@ export default function WBS() {
     const sourceTaskId = draggedTaskIdRef.current || e.dataTransfer.getData('text/task-id');
     if (sourceTaskId) {
       if (cardId === 'other-tasks') {
-        // その他カードにドロップ -> 最上位かつグループフラグオフ
+        // その他カードにドロップ -> 最上位かつグループフラグオフ（逆の操作：親から外す）
         updateTask(sourceTaskId, { parentId: undefined, isGroup: false });
       } else {
         // 特定グループにドロップ -> その親グループ配下に設定
@@ -523,24 +558,29 @@ export default function WBS() {
     }
   };
 
-  // タスクをカード外（コンテナ領域）にドロップ → 親タスク（グループ）に昇格
+  // タスク/グループをカード外（コンテナ背景領域）にドロップ → 親から外して最上位独立ブロック/タスクに還元（逆の操作）
   const handleTaskDropOnContainer = (e: React.DragEvent) => {
     e.preventDefault();
     const sourceTaskId = draggedTaskIdRef.current || e.dataTransfer.getData('text/task-id');
-    if (sourceTaskId) {
-      const task = tasks.find(t => t.id === sourceTaskId);
-      if (task && !task.isGroup) {
-        updateTask(sourceTaskId, { parentId: undefined, isGroup: true });
+    const sourceCardId = draggedCardIdRef.current || e.dataTransfer.getData('text/card-id');
+    const targetId = sourceTaskId || sourceCardId;
+    
+    if (targetId) {
+      const task = tasks.find(t => t.id === targetId);
+      if (task && task.parentId) {
+        updateTask(targetId, { parentId: undefined });
       }
     }
     draggedTaskIdRef.current = null;
+    draggedCardIdRef.current = null;
     setDraggedTaskId(null);
+    setDraggedCardId(null);
     setDragOverTaskId(null);
     setDragOverCardId(null);
   };
 
   const handleTaskDragOverContainer = (e: React.DragEvent) => {
-    if (draggedTaskIdRef.current) {
+    if (draggedTaskIdRef.current || draggedCardIdRef.current) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
     }
