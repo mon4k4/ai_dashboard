@@ -270,10 +270,10 @@ export default function WBS() {
   }, [members, projects, activeProjectId]);
 
   // 親グループタスク (isGroup: true または子タスクがある最上位タスク、またはタイトルが【】で囲まれている) の抽出
+  // ※ parentId を持つものは別のグループ配下なのでカードとしては表示しない
   const groupTasks = useMemo(() => {
     return filteredTasks.filter(t => {
-      if (t.parentId) return false;
-      // グループと定義されているもの、昔のデータで子タスクが存在するもの、またはタイトルが【】で囲まれているもの
+      if (t.parentId) return false; // 他のグループの子になっているものはカードとして表示しない
       return (t.title && t.title.startsWith('【') && t.title.endsWith('】')) || !!t.isGroup || filteredTasks.some(c => c.parentId === t.id);
     });
   }, [filteredTasks]);
@@ -282,9 +282,23 @@ export default function WBS() {
   const otherTasks = useMemo(() => {
     return filteredTasks.filter(t => {
       if (t.parentId) return false;
+      if (t.title && t.title.startsWith('【') && t.title.endsWith('】')) return false;
       return !t.isGroup && !filteredTasks.some(c => c.parentId === t.id);
     });
   }, [filteredTasks]);
+
+  // 再帰的に全子孫タスクを取得するヘルパー
+  const getAllDescendants = (rootId: string): TaskExtractResult[] => {
+    const result: TaskExtractResult[] = [];
+    const collect = (parentId: string) => {
+      filteredTasks.filter(t => t.parentId === parentId).forEach(child => {
+        result.push(child);
+        collect(child.id);
+      });
+    };
+    collect(rootId);
+    return result;
+  };
 
   // タスクの階層ツリー構築用
   const buildTree = (taskList: TaskExtractResult[]): TaskNode[] => {
@@ -441,10 +455,42 @@ export default function WBS() {
     setDragOverTaskId(null);
   };
 
-  // カードボディー（またはヘッダー）へのタスクドロップハンドラー
+  // カードボディー（またはヘッダー）へのタスク/グループドロップハンドラー
   const handleTaskDropOnCard = (e: React.DragEvent, cardId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // グループカードがドロップされた場合（グループ→グループのネスト）
+    const sourceCardId = draggedCardIdRef.current || e.dataTransfer.getData('text/card-id');
+    if (sourceCardId && sourceCardId !== cardId && cardId !== 'other-tasks') {
+      // 循環参照チェック
+      if (isDescendant(sourceCardId, cardId)) {
+        alert('タスクを自分自身の配下へ移動することはできません。');
+      } else {
+        updateTask(sourceCardId, { parentId: cardId });
+        // カード順序からも除外
+        setCardOrder(prev => prev.filter(id => id !== sourceCardId));
+        if (activeProjectId) {
+          const saved = localStorage.getItem(`wbs_card_order_${activeProjectId}`);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              localStorage.setItem(`wbs_card_order_${activeProjectId}`, JSON.stringify(parsed.filter((id: string) => id !== sourceCardId)));
+            } catch (err) {}
+          }
+        }
+        // 折りたたまれていたら展開
+        if (collapsedTaskIds[cardId]) {
+          toggleCollapse(cardId);
+        }
+      }
+      draggedCardIdRef.current = null;
+      setDraggedCardId(null);
+      setDragOverCardId(null);
+      return;
+    }
+    
+    // タスクがドロップされた場合
     const sourceTaskId = draggedTaskIdRef.current || e.dataTransfer.getData('text/task-id');
     if (sourceTaskId) {
       if (cardId === 'other-tasks') {
@@ -469,7 +515,7 @@ export default function WBS() {
   };
 
   const handleTaskDragOverCard = (e: React.DragEvent, cardId: string) => {
-    if (draggedTaskIdRef.current) {
+    if (draggedTaskIdRef.current || draggedCardIdRef.current) {
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -781,7 +827,7 @@ export default function WBS() {
 
             if (card.type === 'group') {
               const groupTask = card.task!;
-              const groupChildren = filteredTasks.filter(t => t.parentId === groupTask.id);
+              const groupChildren = getAllDescendants(groupTask.id);
               const treeNodes = buildTree(groupChildren);
 
               return (
