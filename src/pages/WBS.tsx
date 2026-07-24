@@ -340,12 +340,28 @@ export default function WBS() {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleCardDragOver = (e: React.DragEvent, cardId: string) => {
-    if (draggedCardIdRef.current && draggedCardIdRef.current !== cardId) {
+  const handleCardDragOver = (e: React.DragEvent, targetCardId: string) => {
+    if (draggedCardIdRef.current && draggedCardIdRef.current !== targetCardId) {
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
-      setDragOverCardId(cardId);
+      
+      const sourceCardId = draggedCardIdRef.current;
+      const allCardIds = sortedCards.map(c => c.id);
+      const fromIdx = allCardIds.indexOf(sourceCardId);
+      const toIdx = allCardIds.indexOf(targetCardId);
+
+      if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+        const newOrder = [...allCardIds];
+        const [removed] = newOrder.splice(fromIdx, 1);
+        newOrder.splice(toIdx, 0, removed);
+        
+        setCardOrder(newOrder);
+        if (activeProjectId) {
+          localStorage.setItem(`wbs_card_order_${activeProjectId}`, JSON.stringify(newOrder));
+        }
+      }
+      setDragOverCardId(targetCardId);
     }
   };
 
