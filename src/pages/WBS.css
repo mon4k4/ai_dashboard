@@ -221,12 +221,18 @@
 .wbs-group-card.drag-over-card {
   border-color: var(--accent-primary) !important;
   box-shadow: 0 0 16px rgba(99, 102, 241, 0.4);
-  background: rgba(99, 102, 241, 0.08);
 }
 
 .wbs-group-card.dragging-card {
   opacity: 0.4;
   transform: scale(0.98);
+}
+
+.wbs-group-card-body.drag-over-body {
+  border: 2px dashed var(--accent-primary) !important;
+  background: rgba(99, 102, 241, 0.12) !important;
+  border-radius: var(--radius-md);
+  position: relative;
 }
 
 /* Card Header */

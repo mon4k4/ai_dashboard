@@ -890,10 +890,7 @@ export default function WBS() {
               return (
                 <div 
                   key={card.id}
-                  className={`wbs-group-card ${isDragging ? 'dragging-card' : ''} ${isDragOver ? 'drag-over-card' : ''}`}
-                  onDragOver={(e) => handleTaskDragOverCard(e, card.id)}
-                  onDragLeave={() => setDragOverCardId(null)}
-                  onDrop={(e) => handleTaskDropOnCard(e, card.id)}
+                  className={`wbs-group-card ${isDragging ? 'dragging-card' : ''}`}
                 >
                   {/* カードヘッダー */}
                   <div 
@@ -927,7 +924,12 @@ export default function WBS() {
                   </div>
 
                   {/* カードボディ */}
-                  <div className="wbs-group-card-body">
+                  <div 
+                    className={`wbs-group-card-body ${isDragOver ? 'drag-over-body' : ''}`}
+                    onDragOver={(e) => handleTaskDragOverCard(e, card.id)}
+                    onDragLeave={() => setDragOverCardId(null)}
+                    onDrop={(e) => handleTaskDropOnCard(e, card.id)}
+                  >
                     {treeNodes.length === 0 ? (
                       <div className="wbs-empty-card-state">
                         タスクがありません。<br/>右上の「+」ボタンから追加するか、他のタスクをここにドラッグしてください。
@@ -946,10 +948,7 @@ export default function WBS() {
               return (
                 <div 
                   key={card.id}
-                  className={`wbs-group-card wbs-other-card ${isDragging ? 'dragging-card' : ''} ${isDragOver ? 'drag-over-card' : ''}`}
-                  onDragOver={(e) => handleTaskDragOverCard(e, card.id)}
-                  onDragLeave={() => setDragOverCardId(null)}
-                  onDrop={(e) => handleTaskDropOnCard(e, card.id)}
+                  className={`wbs-group-card wbs-other-card ${isDragging ? 'dragging-card' : ''}`}
                 >
                   {/* カードヘッダー */}
                   <div 
@@ -968,7 +967,12 @@ export default function WBS() {
                   </div>
 
                   {/* カードボディ */}
-                  <div className="wbs-group-card-body">
+                  <div 
+                    className={`wbs-group-card-body ${isDragOver ? 'drag-over-body' : ''}`}
+                    onDragOver={(e) => handleTaskDragOverCard(e, card.id)}
+                    onDragLeave={() => setDragOverCardId(null)}
+                    onDrop={(e) => handleTaskDropOnCard(e, card.id)}
+                  >
                     {treeNodes.length === 0 ? (
                       <div className="wbs-empty-card-state">
                         グループ未所属のタスクはありません。<br/>右上の「+」ボタンから追加するか、他のタスクをここにドラッグしてください。
