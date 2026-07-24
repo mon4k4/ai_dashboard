@@ -351,6 +351,7 @@ export default function WBS() {
 
   const handleCardDrop = (e: React.DragEvent, targetCardId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     const sourceCardId = draggedCardIdRef.current || e.dataTransfer.getData('text/card-id');
     if (sourceCardId && activeProjectId) {
       if (targetCardId === 'other-tasks') {
@@ -893,9 +894,6 @@ export default function WBS() {
                       onClick={(e) => e.stopPropagation()}
                     />
                     <div className="wbs-group-card-actions">
-                      <button className="wbs-card-action-btn" onClick={(e) => { e.stopPropagation(); toggleCollapse(groupTask.id); }} title="グループ内タスクを折りたたみ/展開">
-                        {collapsedTaskIds[groupTask.id] ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                      </button>
                       <button className="wbs-card-action-btn" onClick={() => setEditingTaskId(groupTask.id)} title="グループを編集">
                         <Edit3 size={15} />
                       </button>
@@ -913,17 +911,15 @@ export default function WBS() {
                   </div>
 
                   {/* カードボディ */}
-                  {!collapsedTaskIds[groupTask.id] && (
-                    <div className="wbs-group-card-body">
-                      {treeNodes.length === 0 ? (
-                        <div className="wbs-empty-card-state">
-                          タスクがありません。<br/>右上の「+」ボタンから追加するか、他のタスクをここにドラッグしてください。
-                        </div>
-                      ) : (
-                        treeNodes.map(node => renderTaskNode(node))
-                      )}
-                    </div>
-                  )}
+                  <div className="wbs-group-card-body">
+                    {treeNodes.length === 0 ? (
+                      <div className="wbs-empty-card-state">
+                        タスクがありません。<br/>右上の「+」ボタンから追加するか、他のタスクをここにドラッグしてください。
+                      </div>
+                    ) : (
+                      treeNodes.map(node => renderTaskNode(node))
+                    )}
+                  </div>
                 </div>
               );
             } else {

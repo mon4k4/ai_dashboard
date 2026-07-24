@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ArrowRight, CornerDownRight, Trash2, Calendar, FileText, Eye, Edit3, Image as ImageIcon } from 'lucide-react';
 import { useAppContext } from '../store/AppContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -110,7 +111,7 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
     }
   };
 
-  return (
+  return createPortal(
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <div style={styles.header}>
@@ -463,7 +464,8 @@ export default function TaskEditModal({ taskId, onClose }: TaskEditModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -474,14 +476,14 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1000,
+    zIndex: 99999,
     backdropFilter: 'blur(4px)',
     overflowY: 'auto' as const,
-    padding: '2.5rem 1rem',
+    padding: '1.5rem 1rem',
   },
   modal: {
     background: 'var(--bg-main)',
